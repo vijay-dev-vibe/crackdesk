@@ -120,7 +120,7 @@ export default function Signup() {
               <span className="font-display text-3xl font-bold text-primary-foreground">A</span>
             </div>
           </div>
-          <h2 className="font-display text-3xl font-bold text-primary-foreground">Join CrackDesk</h2>
+          <h2 className="font-display text-3xl font-bold text-primary-foreground">Join MapReducer</h2>
           <p className="mt-4 text-primary-foreground/70">
             Start preparing smarter with AI-powered mock tests tailored to real job descriptions.
           </p>
@@ -146,7 +146,7 @@ export default function Signup() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
               <span className="font-display text-lg font-bold text-primary-foreground">A</span>
             </div>
-            <span className="font-display text-xl font-bold">CrackDesk</span>
+            <span className="font-display text-xl font-bold">MapReducer</span>
           </Link>
 
           {/* STEP 1 */}

@@ -66,7 +66,7 @@ export default function ResetPassword() {
           </div>
           <h2 className="font-display text-3xl font-bold text-primary-foreground">New Password</h2>
           <p className="mt-4 text-primary-foreground/70">
-            Choose a strong password to secure your CrackDesk account.
+            Choose a strong password to secure your MapReducer account.
           </p>
         </div>
       </div>
@@ -79,7 +79,7 @@ export default function ResetPassword() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
               <Logo className="h-6 w-6" />
             </div>
-            <span className="font-display text-xl font-bold">CrackDesk</span>
+            <span className="font-display text-xl font-bold">MapReducer</span>
           </Link>
 
           {done ? (

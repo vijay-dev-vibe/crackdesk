@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { BookOpen } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export async function saveTestResult(payload: {
   test_title: string;
@@ -132,6 +133,9 @@ export default function TestHistory() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
 
+  // ── Subscription hook ──
+  const { planLimits, loading: subLoading } = useSubscription();
+
   useEffect(() => {
     let mounted = true;
 
@@ -152,9 +156,20 @@ export default function TestHistory() {
 
         if (dbErr) throw new Error(dbErr.message);
 
-        console.log("Results from DB:", data); // ← check values in console
+        console.log("Results from DB:", data);
 
-        if (mounted) setResults(data ?? []);
+        // ── Apply retention window filter client-side ──
+        const retentionDays = planLimits?.historyRetentionDays ?? 7;
+        const cutoff =
+          retentionDays === Infinity
+            ? null
+            : new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+        const retained = (data ?? []).filter((r: TestResult) =>
+          cutoff === null || new Date(r.created_at) >= cutoff
+        );
+
+        if (mounted) setResults(retained);
       } catch (e: any) {
         console.error("[TestHistory] Load error:", e.message);
         if (mounted) setError(e.message ?? "Failed to load results.");
@@ -163,9 +178,10 @@ export default function TestHistory() {
       }
     }
 
-    loadResults();
+    // Wait until planLimits has resolved before fetching so retention is applied correctly
+    if (!subLoading) loadResults();
     return () => { mounted = false; };
-  }, []);
+  }, [planLimits, subLoading]);
 
   const filtered = results.filter((r) => {
     const pct = getPct(r);
@@ -177,7 +193,6 @@ export default function TestHistory() {
 
   const totalTests = results.length;
 
-  // ✅ Fixed: filter out invalid results before calculating
   const validResults = results.filter(r => r.score != null && r.total_questions > 0);
 
   const avgScore = validResults.length > 0
@@ -221,6 +236,19 @@ export default function TestHistory() {
 
         {!loading && totalTests > 0 && <MiniBarChart results={results} />}
 
+        {/* ── Retention limit banner ── */}
+        {planLimits && planLimits.historyRetentionDays !== Infinity && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700 flex items-center justify-between">
+            <span>
+              Showing last {planLimits.historyRetentionDays} days.{" "}
+              <Link to="/pricing" className="font-semibold underline">
+                Upgrade to Pro
+              </Link>{" "}
+              for unlimited history.
+            </span>
+          </div>
+        )}
+
         {!loading && totalTests > 0 && (
           <div className="flex gap-2 flex-wrap mb-4">
             {FILTERS.map((f) => (
@@ -239,7 +267,7 @@ export default function TestHistory() {
           </div>
         )}
 
-        {loading ? (
+        {loading || subLoading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
           </div>

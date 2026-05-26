@@ -1,12 +1,15 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
-import { BookOpen, TrendingUp, Award, Clock, ChevronRight, Loader2, Info, Download } from "lucide-react";
+import { BookOpen, TrendingUp, Award, Clock, ChevronRight, Loader2, Info, Download, Lock, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { initializeStudentQuestions } from "@/lib/studentQuestions";
 import { toast } from "sonner";
+import { useSubscription } from "@/hooks/useSubscription";
+import { canUserAccess } from "@/lib/plans";
+import type { PlanType } from "@/lib/plans";
 
 interface TestResult {
   test_title: string;
@@ -36,6 +39,90 @@ function Badge({ value, up }: { value: string; up: boolean }) {
     }}>
       {up ? "▲" : "▼"} {value}
     </span>
+  );
+}
+
+function PlanBadge({ plan }: { plan: PlanType }) {
+  const config = {
+    free: { color: "rgba(148,163,184,0.2)", textColor: "#94a3b8", label: "Free" },
+    starter: { color: "rgba(59,130,246,0.2)", textColor: "#3b82f6", label: "Starter" },
+    pro: { color: "rgba(168,85,247,0.2)", textColor: "#a855f7", label: "Pro ⭐" },
+    premium: { color: "rgba(245,158,11,0.2)", textColor: "#f59e0b", label: "Premium 👑" }
+  };
+  
+  const c = config[plan];
+  return (
+    <span style={{
+      background: c.color,
+      color: c.textColor,
+      padding: "4px 12px",
+      borderRadius: 8,
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: "0.05em"
+    }}>
+      {c.label}
+    </span>
+  );
+}
+
+function LockedOverlay({ feature, plan }: { feature: string; plan: PlanType }) {
+  const targetPlan = plan === "free" ? "starter" : "pro";
+  return (
+    <div style={{
+      position: "absolute",
+      inset: 0,
+      background: "rgba(26,26,46,0.85)",
+      backdropFilter: "blur(8px)",
+      borderRadius: 16,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 12,
+      zIndex: 10,
+      padding: 20,
+      textAlign: "center"
+    }}>
+      <div style={{
+        width: 48,
+        height: 48,
+        borderRadius: "50%",
+        background: `linear-gradient(135deg, ${GOLD2}33, ${GOLD}44)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 4
+      }}>
+        <Lock size={20} style={{ color: GOLD }} />
+      </div>
+      <div>
+        <p style={{ color: "#fff", fontWeight: 600, fontSize: 14, margin: 0, marginBottom: 4 }}>
+          {feature} Locked
+        </p>
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, margin: 0, marginBottom: 12 }}>
+          Upgrade to {targetPlan === "starter" ? "Starter" : "Pro"} to unlock this feature
+        </p>
+      </div>
+      <Link to="/pricing">
+        <button style={{
+          background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
+          color: "#1a1100",
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 20px",
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          boxShadow: `0 4px 16px rgba(212,160,23,0.4)`
+        }}>
+          <Zap size={14} /> Upgrade Now
+        </button>
+      </Link>
+    </div>
   );
 }
 
@@ -127,6 +214,15 @@ export default function Dashboard() {
   const [recentTests, setRecentTests] = useState<TestResult[]>([]);
   const [stats, setStats] = useState({ testsTaken: 0, avgScore: 0, bestScore: 0 });
   const [allTests, setAllTests] = useState<TestResult[]>([]);
+  
+  const { subscription, loading, planLimits, mockTestsRemaining, aiInterviewsRemaining } = useSubscription();
+  const userPlan = (subscription?.plan_type || "free") as PlanType;
+
+  // Check feature access
+  const hasDashboardAccess = canUserAccess(userPlan, "dashboard");
+  const hasProgressTracking = canUserAccess(userPlan, "progressTracking");
+  const hasWeeklyActivity = canUserAccess(userPlan, "weeklyActivityChart");
+  const hasScoreDistribution = canUserAccess(userPlan, "scoreDistribution");
 
   useEffect(() => {
     const init = async () => {
@@ -189,6 +285,119 @@ export default function Dashboard() {
     return count || Math.round(Math.random() * 3);
   });
 
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f6fb" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: GOLD }} />
+      </div>
+    );
+  }
+
+  // Show upgrade prompt if no dashboard access
+  if (!hasDashboardAccess) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6fb" }}>
+        <Navbar />
+        <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{
+            ...CARD,
+            maxWidth: 600,
+            textAlign: "center",
+            padding: 48
+          }}>
+            <div style={{
+              width: 80,
+              height: 80,
+              borderRadius: "50%",
+              background: `linear-gradient(135deg, ${GOLD2}33, ${GOLD}44)`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 24px"
+            }}>
+              <Lock size={32} style={{ color: GOLD }} />
+            </div>
+            <h2 style={{ color: "#fff", fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
+              Dashboard Locked
+            </h2>
+            <p style={{ color: "rgba(255,255,255,0.6)", marginBottom: 8, fontSize: 14 }}>
+              You're currently on the <PlanBadge plan={userPlan} /> plan
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24, fontSize: 13, lineHeight: 1.6 }}>
+              Unlock the full analytics dashboard with progress tracking, weekly activity charts,<br />
+              score distribution analysis, and performance trends by upgrading to Pro.
+            </p>
+            
+            {/* Preview of locked features */}
+            <div style={{ 
+              padding: 24, 
+              background: "rgba(255,255,255,0.03)", 
+              borderRadius: 12, 
+              marginBottom: 24,
+              border: "1px solid rgba(255,255,255,0.05)"
+            }}>
+              <p style={{ color: GOLD2, fontSize: 12, fontWeight: 600, marginBottom: 16 }}>
+                🔓 UNLOCK WITH PRO:
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, textAlign: "left" }}>
+                {[
+                  "📊 Score Overview Charts",
+                  "📈 Weekly Activity Heatmap",
+                  "🎯 Score Distribution",
+                  "📉 Performance Trends",
+                  "💾 Unlimited History",
+                  "📄 PDF Report Export"
+                ].map((feature, i) => (
+                  <div key={i} style={{ 
+                    color: "rgba(255,255,255,0.7)", 
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8
+                  }}>
+                    <span style={{ color: GOLD }}>✓</span> {feature}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <Link to="/pricing">
+                <button style={{
+                  background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
+                  color: "#1a1100",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "12px 32px",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  boxShadow: `0 4px 20px rgba(212,160,23,0.4)`
+                }}>
+                  Upgrade to Pro
+                </button>
+              </Link>
+              <Link to="/mock-test">
+                <button style={{
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.8)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 10,
+                  padding: "12px 32px",
+                  fontSize: 14,
+                  cursor: "pointer"
+                }}>
+                  Take a Test
+                </button>
+              </Link>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6fb" }}>
       <Navbar />
@@ -213,10 +422,29 @@ export default function Dashboard() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
           style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
           <div>
-            <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24, color: "#1a1a2e", margin: 0 }}>
-              Dashboard Overview
-            </h1>
-            <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 2 }}>Welcome back, {userName} — track your prep analytics</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+              <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24, color: "#1a1a2e", margin: 0 }}>
+                Dashboard Overview
+              </h1>
+              <PlanBadge plan={userPlan} />
+            </div>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 2 }}>
+              Welcome back, {userName} — track your prep analytics
+            </p>
+            {planLimits && (
+              <div style={{ marginTop: 8, display: "flex", gap: 16, fontSize: 12, color: "#64748b" }}>
+                <span>
+                  Mock Tests: <strong style={{ color: GOLD }}>
+                    {mockTestsRemaining === 'unlimited' ? '∞' : mockTestsRemaining} left
+                  </strong>
+                </span>
+                <span>
+                  AI Interviews: <strong style={{ color: GOLD }}>
+                    {aiInterviewsRemaining === 'unlimited' ? '∞' : aiInterviewsRemaining} left
+                  </strong>
+                </span>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <Link to="/mock-test">
@@ -230,13 +458,15 @@ export default function Dashboard() {
                 <BookOpen size={14} /> Take Test
               </button>
             </Link>
-            <button style={{
-              background: "#1a1a2e", color: "#D4A017", border: "1px solid rgba(212,160,23,0.3)",
-              borderRadius: 10, padding: "9px 14px", cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 6, fontSize: 13
-            }}>
-              <Download size={14} /> Export
-            </button>
+            {canUserAccess(userPlan, "exportResults") && (
+              <button style={{
+                background: "#1a1a2e", color: "#D4A017", border: "1px solid rgba(212,160,23,0.3)",
+                borderRadius: 10, padding: "9px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 6, fontSize: 13
+              }}>
+                <Download size={14} /> Export
+              </button>
+            )}
           </div>
         </motion.div>
 
@@ -275,9 +505,10 @@ export default function Dashboard() {
         {/* Middle Row — Stacked Bar + Weekly Bar */}
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
 
-          {/* Stacked Bar Chart */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-            <div style={CARD}>
+          {/* Stacked Bar Chart - LOCKED for free/starter */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+            style={{ position: "relative" }}>
+            <div style={{ ...CARD, opacity: hasProgressTracking ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                 <div>
                   <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>📈 Score Overview</p>
@@ -301,11 +532,13 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+            {!hasProgressTracking && <LockedOverlay feature="Score Overview" plan={userPlan} />}
           </motion.div>
 
-          {/* Weekly Tests Bar */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
-            <div style={CARD}>
+          {/* Weekly Tests Bar - LOCKED for free/starter */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            style={{ position: "relative" }}>
+            <div style={{ ...CARD, opacity: hasWeeklyActivity ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <div>
                   <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>🎯 Weekly Activity</p>
@@ -342,15 +575,17 @@ export default function Dashboard() {
                 })}
               </div>
             </div>
+            {!hasWeeklyActivity && <LockedOverlay feature="Weekly Activity" plan={userPlan} />}
           </motion.div>
         </div>
 
         {/* Bottom Row — Donut + Recent Tests Table */}
         <div style={{ display: "grid", gridTemplateColumns: "0.7fr 1.3fr", gap: 16 }}>
 
-          {/* Donut */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
-            <div style={CARD}>
+          {/* Donut - LOCKED for free/starter */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+            style={{ position: "relative" }}>
+            <div style={{ ...CARD, opacity: hasScoreDistribution ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>🏆 Score Distribution</p>
                 <button style={{
@@ -370,9 +605,10 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+            {!hasScoreDistribution && <LockedOverlay feature="Score Distribution" plan={userPlan} />}
           </motion.div>
 
-          {/* Recent Tests Table */}
+          {/* Recent Tests Table - Always visible */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
             <div style={CARD}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>

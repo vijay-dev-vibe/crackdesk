@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
@@ -8,14 +8,39 @@ import Logo from "@/components/Logo";
 import { avatarUrl as getAvatarUrl } from "@/components/AvatarPicker";
 
 const navLinks = [
-  { label: "Home",        href: "/"            },
-  { label: "Dashboard",   href: "/dashboard"   },
-  { label: "Mock Test",   href: "/mock-test"   },
-  { label: "Test Library",href: "/test-library"},
-  { label: "AI Interview",href: "/ai-interview", badge: "NEW" },
-  { label: "History",     href: "/test-history"},
-  { label: "Pricing",     href: "/pricing"     },
+  { label: "Home",         href: "/"             },
+  { label: "Dashboard",    href: "/dashboard"    },
+  { label: "Mock Test",    href: "/mock-test"    },
+  { label: "AI Interview", href: "/ai-interview", badge: "NEW" },
+  { label: "History",      href: "/test-history" },
+  { label: "Pricing",      href: "/pricing"      },
+  { label: "About",        href: "/About"        },
+  { label: "Test Library", href: "/test-library", locked: true , badge: "coming soon " },
 ];
+
+const HIDDEN_PATHS: string[] = [];
+
+function useIsLiveInterview() {
+  const location = useLocation();
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith("/ai-interview")) {
+      document.body.removeAttribute("data-iv-phase");
+      setIsLive(false);
+      return;
+    }
+    const check = () => {
+      setIsLive(document.body.getAttribute("data-iv-phase") === "live");
+    };
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["data-iv-phase"] });
+    return () => observer.disconnect();
+  }, [location.pathname]);
+
+  return isLive;
+}
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -24,6 +49,9 @@ export default function Navbar() {
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const isLive   = useIsLiveInterview();
+
+  if (isLive) return null;
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -31,7 +59,6 @@ export default function Navbar() {
       .select("avatar_key, avatar_url, full_name")
       .eq("id", userId)
       .maybeSingle();
-
     if (data) {
       if (data.full_name)  setUserName(data.full_name);
       if (data.avatar_key) setUserAvatar(getAvatarUrl(data.avatar_key));
@@ -62,7 +89,6 @@ export default function Navbar() {
       if (!u) { setUserAvatar(null); setUserName(""); }
     });
 
-    // listen for avatar update from profile page
     const onAvatarUpdated = () => {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) fetchProfile(session.user.id);
@@ -104,31 +130,51 @@ export default function Navbar() {
             <Logo className="h-10 w-10" />
           </div>
           <span className="font-display text-xl font-bold text-foreground">
-            Crack<span className="text-gradient">Desk</span>
+            Map<span className="text-gradient">Reducer</span>
           </span>
         </Link>
 
+        {/* Desktop Nav */}
         <div className="hidden items-center gap-1 md:flex">
-          {navLinks.map((l) => (
-            <Link
-              key={l.href}
-              to={l.href}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                location.pathname === l.href
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {l.label}
-              {l.badge && (
-                <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {l.badge}
+          {navLinks.map((l) =>
+            l.locked ? (
+              <div key={l.href} className="relative group">
+                <span
+                  className="rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-1.5 cursor-not-allowed select-none text-muted-foreground/40"
+                >
+                  <Lock className="h-3 w-3" />
+                  {l.label}
                 </span>
-              )}
-            </Link>
-          ))}
+                {/* Tooltip */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 hidden group-hover:flex flex-col items-center pointer-events-none">
+                  <div className="w-2 h-2 bg-foreground rotate-45 -mb-1 rounded-sm" />
+                  <div className="bg-foreground text-background text-[11px] font-semibold px-2.5 py-1.5 rounded-md whitespace-nowrap shadow-lg">
+                    Coming Soon
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Link
+                key={l.href}
+                to={l.href}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                  location.pathname === l.href
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {l.label}
+                {l.badge && (
+                  <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    {l.badge}
+                  </span>
+                )}
+              </Link>
+            )
+          )}
         </div>
 
+        {/* Desktop Auth */}
         <div className="hidden items-center gap-3 md:flex">
           {user ? (
             <>
@@ -158,6 +204,7 @@ export default function Navbar() {
         </button>
       </div>
 
+      {/* Mobile Menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
@@ -167,25 +214,40 @@ export default function Navbar() {
             className="overflow-hidden border-t border-border bg-background md:hidden"
           >
             <div className="flex flex-col gap-1 p-4">
-              {navLinks.map((l) => (
-                <Link
-                  key={l.href}
-                  to={l.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={`rounded-lg px-3 py-2.5 text-sm flex items-center gap-1.5 ${
-                    location.pathname === l.href
-                      ? "bg-secondary text-secondary-foreground"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {l.label}
-                  {l.badge && (
-                    <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                      {l.badge}
+              {navLinks.map((l) =>
+                l.locked ? (
+                  <div
+                    key={l.href}
+                    className="rounded-lg px-3 py-2.5 text-sm flex items-center justify-between cursor-not-allowed select-none text-muted-foreground/40"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="h-3 w-3" />
+                      {l.label}
                     </span>
-                  )}
-                </Link>
-              ))}
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-muted-foreground/20 text-muted-foreground/40">
+                      COMING SOON
+                    </span>
+                  </div>
+                ) : (
+                  <Link
+                    key={l.href}
+                    to={l.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={`rounded-lg px-3 py-2.5 text-sm flex items-center gap-1.5 ${
+                      location.pathname === l.href
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {l.label}
+                    {l.badge && (
+                      <span className="bg-secondary text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        {l.badge}
+                      </span>
+                    )}
+                  </Link>
+                )
+              )}
 
               <div className="mt-3 border-t border-border pt-3 flex flex-col gap-2">
                 {user ? (

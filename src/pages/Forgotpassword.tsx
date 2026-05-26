@@ -57,7 +57,7 @@ export default function ForgotPassword() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
               <Logo className="h-6 w-6" />
             </div>
-            <span className="font-display text-xl font-bold">CrackDesk</span>
+            <span className="font-display text-xl font-bold">MapReducer</span>
           </Link>
 
           {/* Back to login */}

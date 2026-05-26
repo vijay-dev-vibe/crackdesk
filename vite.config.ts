@@ -9,15 +9,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/groq": {
-        target: "https://api.groq.com",
+      "/api": {
+        target: "http://localhost:3000",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/groq/, ""),
-        headers: {
-          "Accept-Encoding": "identity",
-        },
       },
     },
   },
 });
-

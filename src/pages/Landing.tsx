@@ -20,7 +20,7 @@ const steps = [
 ];
 
 const testimonials = [
-  { name: "Priya Sharma", college: "VIT Vellore", text: "CrackDesk helped me crack the TCS NQT on my first attempt. The JD-based tests were spot on!", rating: 5 },
+  { name: "Priya Sharma", college: "VIT Vellore", text: "MapReducer helped me crack the TCS NQT on my first attempt. The JD-based tests were spot on!", rating: 5 },
   { name: "Rahul Menon", college: "SRM Chennai", text: "I practiced with company-specific tests and improved my score from 55% to 89% in just two weeks.", rating: 5 },
   { name: "Ananya Gupta", college: "BITS Pilani", text: "The AI-generated questions felt like real interview prep. The PDF certificate is a nice touch for applications.", rating: 5 },
 ];
@@ -124,7 +124,7 @@ export default function Landing() {
         <div className="container mx-auto px-4">
           <div className="mx-auto grid max-w-5xl gap-12 md:grid-cols-2 md:items-center">
             <div>
-              <span className="text-sm font-semibold text-primary">Why CrackDesk?</span>
+              <span className="text-sm font-semibold text-primary">Why MapReducer?</span>
               <h2 className="mt-2 font-display text-3xl font-bold text-foreground md:text-4xl">
                 Smarter Preparation, Better Results
               </h2>
@@ -221,7 +221,7 @@ export default function Landing() {
             Ready to Ace Your Next Interview?
           </h2>
           <p className="mt-4 text-lg text-primary-foreground/80">
-            Join thousands of students already using CrackDesk to land their dream jobs.
+            Join thousands of students already using MapReducer to land their dream jobs.
           </p>
           <div className="mt-8">
             <Link to="/signup">

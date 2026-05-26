@@ -80,7 +80,7 @@ export default function Login() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
               <span className="font-display text-lg font-bold text-primary-foreground">A</span>
             </div>
-            <span className="font-display text-xl font-bold">CrackDesk</span>
+            <span className="font-display text-xl font-bold">MapReducer</span>
           </Link>
 
           <h1 className="font-display text-2xl font-bold text-foreground">Log in to your account</h1>

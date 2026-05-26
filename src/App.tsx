@@ -12,7 +12,6 @@ import TestLibrary from "./pages/TestLibrary";
 import TestHistory from "./pages/TestHistory";
 import Profile from "./pages/Profile";
 import Pricing from "./pages/Pricing";
-import InterviewSetup from "./pages/InterviewSetup";
 import InterviewRoom from "./pages/InterviewRoom";
 import InterviewAnalysis from "./pages/InterviewAnalysis";
 import NotFound from "./pages/NotFound";
@@ -22,6 +21,10 @@ import AdminRoute from "./components/AdminRoute";
 import AdminSeeder from "@/pages/AdminSeeder";
 import ForgotPassword from "@/pages/Forgotpassword";
 import ResetPassword from "@/pages/Resetpassword";
+import AdminTestPanel from "@/pages/AdminTestPanel";
+import about from "@/pages/About";
+import About from "@/pages/About";
+
 
 const queryClient = new QueryClient();
 
@@ -59,7 +62,7 @@ const App = () => (
             <ProtectedRoute><Pricing /></ProtectedRoute>
           } />
           <Route path="/ai-interview" element={
-            <ProtectedRoute><InterviewSetup /></ProtectedRoute>
+            <ProtectedRoute><InterviewRoom /></ProtectedRoute>
           } />
           <Route path="/ai-interview/room" element={
             <ProtectedRoute><InterviewRoom /></ProtectedRoute>
@@ -67,8 +70,14 @@ const App = () => (
           <Route path="/admin/seeder" element={
             <ProtectedRoute><AdminSeeder /></ProtectedRoute>
           } />
+          <Route path="/admin-test" element={
+            <ProtectedRoute><AdminTestPanel /></ProtectedRoute>
+          } />
           <Route path="/ai-interview/analysis" element={
             <ProtectedRoute><InterviewAnalysis /></ProtectedRoute>
+          } />
+          <Route path="/About" element={
+            <ProtectedRoute><About /></ProtectedRoute>
           } />
 
           {/* ADMIN DASHBOARD - Protected by AdminRoute */}

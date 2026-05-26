@@ -14,17 +14,17 @@ import {
 import { supabase } from "@/lib/supabase";
 import { getDepartmentMeta } from "@/lib/studentQuestions";
 import { toast } from "sonner";
-import AvatarPicker, { AvatarImg, avatarUrl } from "../components/AvatarPicker"; // 👈 also import avatarUrl
+import AvatarPicker, { AvatarImg } from "../components/AvatarPicker";
 
 interface ProfileData {
   full_name:    string;
   email:        string;
   college_name: string;
   departments:  string[];
-  plan_type:    string;
+  plan_type:    string; // ← now sourced from subscriptions table
   created_at:   string;
   avatar_key:   string | null;
-  avatar_url:   string | null; // 👈 NEW
+  avatar_url:   string | null;
 }
 
 interface Stats {
@@ -32,6 +32,15 @@ interface Stats {
   avgScore:   number;
   bestScore:  number;
 }
+
+// ── Plan display config ───────────────────────────────────────────────────────
+const PLAN_DISPLAY: Record<string, { label: string; color: string }> = {
+  free:     { label: "Free",    color: "bg-muted text-muted-foreground" },
+  trial:    { label: "Trial",   color: "bg-orange-100 text-orange-700 border-orange-200" },
+  starter:  { label: "Starter", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  pro:      { label: "Pro",     color: "bg-purple-100 text-purple-700 border-purple-200" },
+  premium:  { label: "Premium", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+};
 
 export default function Profile() {
   const [profile,     setProfile]     = useState<ProfileData | null>(null);
@@ -43,108 +52,120 @@ export default function Profile() {
   const [loading,     setLoading]     = useState(true);
   const [showPicker,  setShowPicker]  = useState(false);
   const [avatarKey,   setAvatarKey]   = useState<string | null>(null);
-  const [userId,      setUserId]      = useState<string>(""); // 👈 NEW
+  const [userId,      setUserId]      = useState<string>("");
 
-useEffect(() => {
-  const load = async () => {
+  useEffect(() => {
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const uid = session.user.id;
+      setUserId(uid);
+
+      // ── 1. Fetch profile row ────────────────────────────────────────────────
+      const { data: prof } = await (supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", uid)
+        .maybeSingle() as any);
+
+      // ── 2. FIX: Fetch real plan from user_subscriptions table ─────────────
+      //    Falls back to profiles.plan_type, then "free"
+      const { data: sub } = await (supabase
+        .from("user_subscriptions")
+        .select("plan_type")
+        .eq("user_id", uid)
+        .maybeSingle() as any);
+
+      const realPlanType = sub?.plan_type || prof?.plan_type || "free";
+
+      if (prof) {
+        const fullName =
+          prof.full_name ||
+          session.user.user_metadata?.full_name ||
+          session.user.email?.split("@")[0] || "";
+
+        const p: ProfileData = {
+          full_name:    fullName,
+          email:        prof.email        || session.user.email || "",
+          college_name: prof.college_name || "",
+          departments:  prof.departments  || [],
+          plan_type:    realPlanType,       // ← from subscriptions
+          created_at:   prof.created_at,
+          avatar_key:   prof.avatar_key   || null,
+          avatar_url:   prof.avatar_url   || null,
+        };
+        setProfile(p);
+        setEditName(p.full_name);
+        setEditCollege(p.college_name);
+        setAvatarKey(prof.avatar_key || "adventurer:luna");
+      } else {
+        const fullName =
+          session.user.user_metadata?.full_name ||
+          session.user.email?.split("@")[0] || "";
+        setProfile({
+          full_name:    fullName,
+          email:        session.user.email || "",
+          college_name: "",
+          departments:  [],
+          plan_type:    realPlanType,       // ← from subscriptions
+          created_at:   session.user.created_at,
+          avatar_key:   null,
+          avatar_url:   null,
+        });
+        setEditName(fullName);
+        setAvatarKey("adventurer:luna");
+      }
+
+      // ── 3. Fetch test stats ─────────────────────────────────────────────────
+      const { data: results } = await (supabase
+        .from("test_results")
+        .select("score, total_questions")
+        .eq("user_id", uid) as any);
+
+      if (results && results.length > 0) {
+        const scores = results.map((r: any) =>
+          Math.round((r.score / r.total_questions) * 100));
+        setStats({
+          testsTaken: results.length,
+          avgScore:   Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length),
+          bestScore:  Math.max(...scores),
+        });
+      }
+
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  /* ── Save avatar ─────────────────────────────────────────────────────────── */
+  const handleAvatarSelect = (key: string, url: string) => {
+    setAvatarKey(key);
+    setProfile(p => p ? { ...p, avatar_key: key, avatar_url: url } : p);
+    toast.success("Avatar updated!");
+    window.dispatchEvent(new CustomEvent("avatar-updated"));
+  };
+
+  /* ── Save name/college ───────────────────────────────────────────────────── */
+  const handleSave = async () => {
+    setSaving(true);
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
-    const uid = session.user.id;
-    setUserId(uid);
 
-    const { data: prof } = await (supabase
+    const { error } = await (supabase
       .from("profiles")
-      .select("*")
-      .eq("id", uid)        // ✅ id not user_id
-      .maybeSingle() as any);
+      .update({ full_name: editName, college_name: editCollege })
+      .eq("id", session.user.id) as any);
 
-    if (prof) {
-      const fullName =
-        prof.full_name ||
-        session.user.user_metadata?.full_name ||
-        session.user.email?.split("@")[0] || "";
-
-      const p: ProfileData = {
-        full_name:    fullName,
-        email:        prof.email        || session.user.email || "",
-        college_name: prof.college_name || "",
-        departments:  prof.departments  || [],
-        plan_type:    prof.plan_type    || "free",
-        created_at:   prof.created_at,
-        avatar_key:   prof.avatar_key   || null,
-        avatar_url:   prof.avatar_url   || null,
-      };
-      setProfile(p);
-      setEditName(p.full_name);
-      setEditCollege(p.college_name);
-      setAvatarKey(prof.avatar_key || "adventurer:luna"); // ✅ DB is source of truth
+    if (error) {
+      toast.error("Failed to update profile");
     } else {
-      // No profile row yet
-      const fullName =
-        session.user.user_metadata?.full_name ||
-        session.user.email?.split("@")[0] || "";
-      setProfile({
-        full_name:    fullName,
-        email:        session.user.email || "",
-        college_name: "",
-        departments:  [],
-        plan_type:    "free",
-        created_at:   session.user.created_at,
-        avatar_key:   null,
-        avatar_url:   null,
-      });
-      setEditName(fullName);
-      setAvatarKey("adventurer:luna");
+      setProfile(p => p ? { ...p, full_name: editName, college_name: editCollege } : p);
+      setEditing(false);
+      toast.success("Profile updated!");
     }
-
-    const { data: results } = await (supabase
-      .from("test_results")
-      .select("score, total_questions")
-      .eq("user_id", uid) as any);
-
-    if (results && results.length > 0) {
-      const scores = results.map((r: any) =>
-        Math.round((r.score / r.total_questions) * 100));
-      setStats({
-        testsTaken: results.length,
-        avgScore:   Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length),
-        bestScore:  Math.max(...scores),
-      });
-    }
-
-    setLoading(false);
+    setSaving(false);
   };
-  load();
-}, []);
-  /* ── Save avatar — now receives key + url from picker ──── */
-// remove userId state and prop, change onSelect handler
-const handleAvatarSelect = (key: string, url: string) => {
-  setAvatarKey(key);
-  setProfile(p => p ? { ...p, avatar_key: key, avatar_url: url } : p);
-  toast.success("Avatar updated!");
-  window.dispatchEvent(new CustomEvent("avatar-updated")); // ✅ updates navbar
-};
 
-  /* ── Save name/college ─────────────────────────────────── */
-const handleSave = async () => {
-  setSaving(true);
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return;
-
-  const { error } = await (supabase
-    .from("profiles")
-    .update({ full_name: editName, college_name: editCollege })
-    .eq("id", session.user.id) as any); // ✅ id not user_id
-
-  if (error) {
-    toast.error("Failed to update profile");
-  } else {
-    setProfile(p => p ? { ...p, full_name: editName, college_name: editCollege } : p);
-    setEditing(false);
-    toast.success("Profile updated!");
-  }
-  setSaving(false);
-};
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-muted/30">
@@ -156,10 +177,12 @@ const handleSave = async () => {
     );
   }
 
-  // 👇 FIX: was falling back to "Profile", now uses email prefix instead
   const firstName = profile?.full_name?.split(" ")[0] ||
     profile?.email?.split("@")[0] ||
     "User";
+
+  // Plan badge config — falls back to "free" style if unknown
+  const planMeta = PLAN_DISPLAY[profile?.plan_type ?? "free"] ?? PLAN_DISPLAY.free;
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -187,7 +210,7 @@ const handleSave = async () => {
               animate={{ opacity:1, x:0 }}
               className="font-display text-2xl font-bold text-foreground md:text-3xl"
             >
-              {firstName} {/* ✅ now shows actual name */}
+              {firstName}
             </motion.h1>
             <p className="text-sm text-muted-foreground">
               Manage your account and view your stats
@@ -258,11 +281,16 @@ const handleSave = async () => {
                     <span className="text-muted-foreground">College:</span>
                     <span className="font-medium text-foreground">{profile?.college_name || "Not set"}</span>
                   </div>
+
+                  {/* ── FIX: Plan badge now shows real plan from subscriptions ── */}
                   <div className="flex items-center gap-3 text-sm">
                     <Crown className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-muted-foreground">Plan:</span>
-                    <Badge variant="secondary" className="capitalize">{profile?.plan_type}</Badge>
+                    <Badge className={`capitalize border ${planMeta.color}`}>
+                      {planMeta.label}
+                    </Badge>
                   </div>
+
                   <div className="flex items-center gap-3 text-sm">
                     <Calendar className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-muted-foreground">Joined:</span>
@@ -272,6 +300,7 @@ const handleSave = async () => {
                         : "—"}
                     </span>
                   </div>
+
                   <div className="flex items-start gap-3 text-sm">
                     <BookOpen className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                     <span className="text-muted-foreground shrink-0">Departments:</span>
@@ -324,13 +353,12 @@ const handleSave = async () => {
 
       <Footer />
 
-      {/* 👇 updated: passes userId, and new onSelect signature */}
-        {showPicker && (
-          <AvatarPicker
-            currentKey={avatarKey}
-            onSelect={handleAvatarSelect}
-            onClose={() => setShowPicker(false)}
-          />
+      {showPicker && (
+        <AvatarPicker
+          currentKey={avatarKey}
+          onSelect={handleAvatarSelect}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );

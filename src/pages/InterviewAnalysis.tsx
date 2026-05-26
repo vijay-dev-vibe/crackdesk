@@ -16,7 +16,136 @@ interface AnalysisResult {
   question_scores: QuestionScore[]; integrity_note: string;
 }
 
-const ANALYSIS_PROMPT = `You are an expert interview evaluator. Analyze the interview and return ONLY valid JSON with zero markdown: { "overall_score": number 0-100, "overall_grade": "A+ or A or B+ or B or C or D", "summary": "2-3 sentence assessment", "hire_recommendation": "Strong Hire or Hire or Maybe or No Hire", "strengths": ["s1","s2","s3"], "improvements": ["i1","i2"], "question_scores": [ {"id":1,"score":0-10,"feedback":"specific feedback on this answer","keyword_hits":["word1","word2"]} ], "integrity_note": "comment on tab violations if any, or empty string if none" }`;
+// ─────────────────────────────────────────────────────────────────────────────
+// WORLD-CLASS ANALYSIS PROMPT
+// Evaluates 8 professional dimensions, detects filler words, estimates
+// communication quality, applies penalty for tab violations, and returns
+// richly-detailed per-question feedback with domain-relevant keyword matching.
+// ─────────────────────────────────────────────────────────────────────────────
+const ANALYSIS_PROMPT = `You are a world-class interview evaluator with 20+ years of experience at top-tier companies (Google, McKinsey, Goldman Sachs). Your evaluations are trusted to make final hiring decisions.
+
+Evaluate the candidate across these 8 professional dimensions:
+1. Technical Depth & Accuracy — correctness, specificity, use of industry terminology
+2. Communication Clarity — structure, conciseness, absence of filler phrases ("um", "like", "you know")
+3. Problem-Solving Approach — frameworks used (STAR, MECE, first-principles), logical flow
+4. Relevance & Focus — how directly the answer addresses the question asked
+5. Self-Awareness & Growth — acknowledgment of weaknesses, learning mindset
+6. Leadership & Impact — ownership language, quantified results, team influence
+7. Cultural Fit & Professionalism — tone, enthusiasm, alignment to role expectations
+8. Recall & Consistency — coherence across answers, no contradictions
+
+Scoring rules:
+- overall_score: weighted average of all 8 dimensions (0–100). Do NOT inflate. Be honest and calibrated to real hiring bar.
+- Apply a -2 point penalty per tab violation (max -15) to overall_score.
+- If answer is very short (< 15 words), score that question max 4/10.
+- If answer shows strong STAR structure with quantified results, score 8–10/10.
+- overall_grade: "A+" (90–100), "A" (80–89), "B+" (70–79), "B" (60–69), "C" (50–59), "D" (below 50)
+- hire_recommendation: "Strong Hire" (85+), "Hire" (70–84), "Maybe" (55–69), "No Hire" (below 55)
+
+For keyword_hits: extract 2–5 actual domain-relevant keywords or phrases the candidate used that demonstrate knowledge (e.g. "REST API", "regression analysis", "stakeholder alignment"). Only include words actually present in their answer.
+
+For feedback per question: be specific, actionable, and reference their actual answer. Mention what was good, what was missing, and one concrete tip to improve.
+
+For strengths: give 3 specific strengths with evidence from their answers (not generic praise).
+For improvements: give 2–3 highly actionable improvements with examples of what a better answer would include.
+
+For integrity_note: if tab violations > 0, write a professional note about the integrity concern and its impact on trust. If none, return "".
+
+Return ONLY valid JSON with zero markdown, no extra keys:
+{
+  "overall_score": number,
+  "overall_grade": "string",
+  "summary": "2–3 sentence calibrated assessment referencing specific role and candidate performance",
+  "hire_recommendation": "string",
+  "strengths": ["specific strength with evidence", ...],
+  "improvements": ["specific actionable improvement", ...],
+  "question_scores": [
+    {
+      "id": number,
+      "score": number 0–10,
+      "feedback": "specific, actionable, 2–3 sentence feedback referencing their actual answer",
+      "keyword_hits": ["actual keyword from answer", ...]
+    }
+  ],
+  "integrity_note": "string"
+}`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS: compute supplementary analytics from raw answers client-side
+// These enrich the display without extra API calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Estimate words per minute as a proxy for verbal fluency */
+function estimateWPM(answers: any[], durationSeconds: number): number {
+  if (!durationSeconds) return 0;
+  const totalWords = answers.reduce((sum, a) => sum + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0);
+  return Math.round((totalWords / durationSeconds) * 60);
+}
+
+/** Count filler-word occurrences across all answers */
+function countFillerWords(answers: any[]): number {
+  const fillers = /\b(um|uh|like|you know|basically|literally|actually|kind of|sort of|i mean|right\?|so yeah|just|stuff|things)\b/gi;
+  return answers.reduce((sum, a) => {
+    const matches = (a.answer || "").match(fillers);
+    return sum + (matches ? matches.length : 0);
+  }, 0);
+}
+
+/** Detect STAR method usage (Situation/Task/Action/Result keywords) */
+function detectSTARUsage(answers: any[]): number {
+  const starSignals = /\b(situation|context|background|task|responsible|challenge|action|decided|implemented|result|outcome|achieved|improved|increased|reduced|led to)\b/gi;
+  const total = answers.reduce((sum, a) => {
+    const matches = (a.answer || "").match(starSignals);
+    return sum + (matches ? new Set(matches.map((m: string) => m.toLowerCase())).size : 0);
+  }, 0);
+  // return as a % of ideal (20 unique STAR signals = 100%)
+  return Math.min(100, Math.round((total / 20) * 100));
+}
+
+/** Average answer length in words */
+function avgAnswerLength(answers: any[]): number {
+  if (!answers.length) return 0;
+  const total = answers.reduce((sum, a) => sum + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0);
+  return Math.round(total / answers.length);
+}
+
+/** Score confidence: % of answers that are ≥ 30 words (substantive) */
+function substantiveAnswerRate(answers: any[]): number {
+  const substantive = answers.filter(a => (a.answer?.split(/\s+/).filter(Boolean).length || 0) >= 30).length;
+  return answers.length ? Math.round((substantive / answers.length) * 100) : 0;
+}
+
+/** Build rich user message for the AI — includes per-answer word counts and filler flags */
+function buildUserMessage(plan: any, answers: any[], violations: any[], duration: number): string {
+  const fillers = /\b(um|uh|like|you know|basically|literally|actually|kind of|sort of|i mean)\b/gi;
+
+  const qaText = answers.map((a: any, i: number) => {
+    const wordCount = a.answer?.split(/\s+/).filter(Boolean).length || 0;
+    const fillerMatches = (a.answer || "").match(fillers) || [];
+    const hasSTAR = /\b(situation|task|action|result|outcome|achieved)\b/i.test(a.answer || "");
+    return [
+      `Q${i + 1} [type: ${a.questionType || "general"}, words: ${wordCount}, fillers: ${fillerMatches.length}, STAR: ${hasSTAR ? "yes" : "no"}]:`,
+      `Question: ${a.question}`,
+      `Answer: ${a.answer || "(no answer given)"}`,
+    ].join("\n");
+  }).join("\n\n");
+
+  return [
+    `Role: ${plan.role} (${plan.level})`,
+    `Focus areas: ${(plan.focus_areas || []).join(", ")}`,
+    `Interview duration: ${Math.floor(duration / 60)}m ${duration % 60}s`,
+    `Tab violations: ${violations.length}`,
+    `Total questions: ${answers.length}`,
+    ``,
+    `--- ANSWERS ---`,
+    qaText,
+    ``,
+    `--- INTEGRITY ---`,
+    violations.length > 0
+      ? `Violations occurred at: ${violations.map((v: any) => `Q${v.qNum} (${v.time})`).join(", ")}`
+      : `No integrity violations detected.`,
+  ].join("\n");
+}
 
 export default function InterviewAnalysis() {
   const navigate = useNavigate();
@@ -25,6 +154,13 @@ export default function InterviewAnalysis() {
   const [answers, setAnswers] = useState<any[]>([]);
   const [violations, setViolations] = useState<any[]>([]);
   const [duration, setDuration] = useState(0);
+
+  // ── Supplementary client-side analytics (no extra API call) ──
+  const [wpm, setWpm] = useState(0);
+  const [fillerCount, setFillerCount] = useState(0);
+  const [starScore, setStarScore] = useState(0);
+  const [avgWords, setAvgWords] = useState(0);
+  const [substantiveRate, setSubstantiveRate] = useState(0);
 
   useEffect(() => {
     const planRaw = sessionStorage.getItem("iv_plan");
@@ -38,17 +174,59 @@ export default function InterviewAnalysis() {
     const ans = JSON.parse(answersRaw);
     const viols = violationsRaw ? JSON.parse(violationsRaw) : [];
     const dur = Number(durationRaw) || 0;
+
     setAnswers(ans);
     setViolations(viols);
     setDuration(dur);
 
-    const qaText = ans.map((a: any, i: number) => `Q${i + 1}: ${a.question}\nA: ${a.answer}`).join("\n\n");
-    const userMsg = `Role: ${plan.role} (${plan.level})\nFocus areas: ${plan.focus_areas.join(", ")}\nTab violations: ${viols.length}\nDuration: ${dur} seconds\nQ&A:\n${qaText}`;
+    // ── Compute client-side analytics immediately ──
+    setWpm(estimateWPM(ans, dur));
+    setFillerCount(countFillerWords(ans));
+    setStarScore(detectSTARUsage(ans));
+    setAvgWords(avgAnswerLength(ans));
+    setSubstantiveRate(substantiveAnswerRate(ans));
 
-    callInterviewAI({ action: "analyze", systemPrompt: ANALYSIS_PROMPT, userMessage: userMsg, maxTokens: 2000 })
-      .then((raw) => { setResult(parseAIJson(raw)); setLoading(false); })
+    // ── Call AI with enriched prompt and message ──
+    const userMsg = buildUserMessage(plan, ans, viols, dur);
+
+    callInterviewAI({
+      action: "analyze",
+      systemPrompt: ANALYSIS_PROMPT,
+      userMessage: userMsg,
+      maxTokens: 2500, // increased for richer per-question feedback
+    })
+      .then((raw) => {
+        const parsed = parseAIJson(raw);
+
+        // ── Safety clamp: ensure scores stay in valid range ──
+        if (parsed) {
+          parsed.overall_score = Math.max(0, Math.min(100, parsed.overall_score));
+          if (parsed.question_scores) {
+            parsed.question_scores = parsed.question_scores.map((qs: QuestionScore) => ({
+              ...qs,
+              score: Math.max(0, Math.min(10, qs.score)),
+            }));
+          }
+          // ── Sync hire_recommendation with score in case AI drifts ──
+          if (parsed.overall_score >= 85 && parsed.hire_recommendation !== "Strong Hire") {
+            parsed.hire_recommendation = "Strong Hire";
+          } else if (parsed.overall_score >= 70 && parsed.overall_score < 85 && parsed.hire_recommendation === "Strong Hire") {
+            parsed.hire_recommendation = "Hire";
+          } else if (parsed.overall_score < 55 && parsed.hire_recommendation === "Strong Hire") {
+            parsed.hire_recommendation = "No Hire";
+          }
+        }
+
+        setResult(parsed);
+        setLoading(false);
+      })
       .catch(() => {
-        setResult({ overall_score: 0, overall_grade: "N/A", summary: "Analysis failed. Please try again.", hire_recommendation: "N/A", strengths: [], improvements: [], question_scores: [], integrity_note: "" });
+        setResult({
+          overall_score: 0, overall_grade: "N/A",
+          summary: "Analysis failed. Please try again.",
+          hire_recommendation: "N/A", strengths: [], improvements: [],
+          question_scores: [], integrity_note: "",
+        });
         setLoading(false);
       });
   }, [navigate]);
@@ -104,7 +282,7 @@ export default function InterviewAnalysis() {
           </Card>
         </motion.div>
 
-        {/* STAT CARDS */}
+        {/* STAT CARDS — original 4 + 4 new analytics cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Overall Score", value: `${result.overall_score}%` },
@@ -120,6 +298,67 @@ export default function InterviewAnalysis() {
             </Card>
           ))}
         </div>
+
+        {/* COMMUNICATION ANALYTICS — extra row of 4 smart metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            {
+              label: "Speaking Pace",
+              value: wpm > 0 ? `${wpm} WPM` : "N/A",
+              note: wpm >= 120 && wpm <= 160 ? "✓ Ideal pace" : wpm > 160 ? "↑ Too fast" : wpm > 0 ? "↓ Too slow" : "",
+              alert: wpm > 180 || (wpm > 0 && wpm < 80),
+            },
+            {
+              label: "Filler Words",
+              value: String(fillerCount),
+              note: fillerCount === 0 ? "✓ None detected" : fillerCount <= 5 ? "Acceptable" : "Too many",
+              alert: fillerCount > 5,
+            },
+            {
+              label: "STAR Usage",
+              value: `${starScore}%`,
+              note: starScore >= 60 ? "✓ Strong structure" : starScore >= 30 ? "Partial structure" : "Needs structure",
+              alert: starScore < 30,
+            },
+            {
+              label: "Avg Answer Length",
+              value: `${avgWords} words`,
+              note: avgWords >= 50 ? "✓ Detailed" : avgWords >= 25 ? "Adequate" : "Too brief",
+              alert: avgWords < 25,
+            },
+          ].map((s) => (
+            <Card key={s.label} className={s.alert ? "border-amber-300 bg-amber-50/50" : "border-blue-100 bg-blue-50/30"}>
+              <CardContent className="p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
+                <p className="text-2xl font-display font-bold text-foreground">{s.value}</p>
+                {s.note && <p className="text-xs mt-1 text-muted-foreground">{s.note}</p>}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* SUBSTANTIVE ANSWER RATE — thin progress bar card */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-foreground">Answer Depth Rate</p>
+              <span className="text-sm font-bold text-foreground">{substantiveRate}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${substantiveRate >= 70 ? "bg-green-500" : substantiveRate >= 40 ? "bg-amber-500" : "bg-red-400"}`}
+                style={{ width: `${substantiveRate}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {substantiveRate >= 70
+                ? "Most answers were detailed and substantive (30+ words)."
+                : substantiveRate >= 40
+                ? "About half your answers had sufficient depth. Aim for more detail."
+                : "Most answers were too short. Interviewers expect 50–100 word responses minimum."}
+            </p>
+          </CardContent>
+        </Card>
 
         {/* STRENGTHS & IMPROVEMENTS */}
         <div className="grid md:grid-cols-2 gap-4">
@@ -151,12 +390,17 @@ export default function InterviewAnalysis() {
           <div className="space-y-4">
             {result.question_scores.map((qs, i) => {
               const a = answers[i];
+              const wordCount = a?.answer?.split(/\s+/).filter(Boolean).length || 0;
               return (
                 <Card key={qs.id}>
                   <CardContent className="p-5 space-y-3">
                     <div className="flex items-center gap-2">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{i + 1}</span>
                       <p className="text-sm font-medium text-foreground flex-1">{a?.question}</p>
+                      {/* ── Word count badge — shows depth at a glance ── */}
+                      <span className="shrink-0 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                        {wordCount}w
+                      </span>
                     </div>
                     {a?.answer && (
                       <div className="rounded-lg bg-muted p-3">
@@ -214,4 +458,3 @@ export default function InterviewAnalysis() {
     </div>
   );
 }
-

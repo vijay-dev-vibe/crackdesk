@@ -503,7 +503,7 @@ export default function AdminDashboard() {
             <ShieldAlert className="h-4 w-4 text-red-400" />
           </div>
           <div>
-            <h1 className="font-bold text-white">📊 CrackDesk Admin Dashboard</h1>
+            <h1 className="font-bold text-white">📊 MapReducer Admin Dashboard</h1>
             <p className="text-xs text-gray-500">Historical Data • Real-Time Updates</p>
           </div>
         </div>

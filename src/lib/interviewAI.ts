@@ -1,75 +1,85 @@
-const GROQ_API_URL = "/api/ai";
+// src/lib/interviewAI.ts
 
-interface InterviewAIParams {
+interface CallInterviewAIParams {
   action: string;
   systemPrompt: string;
   userMessage: string;
-  maxTokens?: number;
+  maxTokens: number;
 }
 
-export async function callInterviewAI({ systemPrompt, userMessage, maxTokens }: InterviewAIParams): Promise<string> {
-
-  const enhancedSystem = systemPrompt + "\n\nCRITICAL: Output ONLY the raw JSON object. No markdown. No backticks. No explanation. Start your response with { and end with }";
-
-  const response = await fetch(GROQ_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "meta-llama/llama-3.3-70b-instruct",
-      messages: [
-        { role: "system", content: enhancedSystem },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: maxTokens || 1500,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API error: ${response.status} - ${err}`);
-  }
-
-  const text = await response.text();
-  console.log("Raw response:", text);
-
-  let data: any;
+export async function callInterviewAI({
+  systemPrompt,
+  userMessage,
+  maxTokens,
+}: CallInterviewAIParams): Promise<string> {
   try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Failed to parse response: ${text.slice(0, 200)}`);
-  }
+    const response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant', // or any OpenRouter model
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      }),
+    });
 
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error(`No content in response: ${JSON.stringify(data).slice(0, 200)}`);
-  }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('AI API Error:', errorData);
+      throw new Error(
+        errorData.error?.message || errorData.error || `API request failed: ${response.status}`
+      );
+    }
 
-  console.log("AI content:", content);
-  return content;
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    
+    if (!content) {
+      throw new Error('Empty response from AI');
+    }
+
+    return content;
+  } catch (error) {
+    console.error('Interview AI Error:', error);
+    throw error;
+  }
 }
 
-export function parseAIJson(raw: string): any {
-  let cleaned = raw.trim();
-
-  cleaned = cleaned.replace(/```json/gi, "").replace(/```/g, "").trim();
-
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-
-  if (start === -1 || end === -1) {
-    console.error("No JSON found in:", cleaned);
-    throw new Error("AI returned invalid JSON. Please try again.");
-  }
-
-  cleaned = cleaned.slice(start, end + 1);
-
+// Helper function to parse AI JSON responses
+export function parseAIJson(text: string): any {
   try {
+    // Remove markdown code blocks if present
+    const cleaned = text
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
     return JSON.parse(cleaned);
-  } catch (e) {
-    console.error("JSON parse failed on:", cleaned);
-    throw new Error("AI returned invalid JSON. Please try again.");
+  } catch (error) {
+    console.error('Failed to parse AI JSON:', error);
+    console.error('Raw text:', text);
+
+    // Try to extract JSON from text
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch (e) {
+        // Fall through to return error object
+      }
+    }
+
+    // Return a fallback object
+    return {
+      error: true,
+      message: 'Failed to parse response',
+      raw: text,
+    };
   }
 }
