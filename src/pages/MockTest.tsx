@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import jsPDF from "jspdf";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -28,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { generateCertificatePDF } from "@/lib/TestCertificatePDF";
 
 type Phase = "input" | "quiz" | "results";
 
@@ -266,13 +266,12 @@ export default function MockTest() {
     skillBreakdown()
       .filter((s) => s.pct < 70)
       .map((s) => s.skill);
-  const formatTimeTaken = (s: number) =>
-    `${Math.floor(s / 60)}m ${s % 60}s`;
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60)
       .toString()
       .padStart(2, "0")}`;
   const isWarningTime = timeLeft <= 60;
+  const formatTimeTaken = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
 
   // ── PDF certificate ──────────────────────────────────────────────────────────
   const downloadPDF = () => {
@@ -285,162 +284,16 @@ export default function MockTest() {
       });
       return;
     }
-    const doc = new jsPDF({
-      orientation: "landscape",
-      unit: "mm",
-      format: "a4",
+
+    generateCertificatePDF({
+      percentage,
+      score,
+      totalQuestions: questions.length,
+      timeTaken,
+      strongAreas: strongAreas(),
+      weakAreas: weakAreas(),
     });
-    const W = 297,
-      H = 210;
-    doc.setFillColor(255, 255, 255);
-    doc.rect(0, 0, W, H, "F");
-    doc.setFillColor(20, 20, 20);
-    doc.rect(0, 0, 28, H, "F");
-    doc.setDrawColor(197, 160, 80);
-    doc.setLineWidth(5);
-    doc.ellipse(14, H / 2, 20, 55, "S");
-    doc.setDrawColor(197, 160, 80);
-    doc.setLineWidth(2.5);
-    doc.rect(4, 4, W - 8, H - 8, "S");
-    doc.setLineWidth(0.5);
-    doc.rect(8, 8, W - 16, H - 16, "S");
-    const sealX = 52,
-      sealY = 38,
-      sealR = 13;
-    doc.setFillColor(197, 160, 80);
-    for (let i = 0; i < 16; i++) {
-      const a1 = (i * 22.5 * Math.PI) / 180;
-      const a2 = ((i + 0.5) * 22.5 * Math.PI) / 180;
-      doc.triangle(
-        sealX,
-        sealY,
-        sealX + (sealR + 5) * Math.cos(a1),
-        sealY + (sealR + 5) * Math.sin(a1),
-        sealX + sealR * Math.cos(a2),
-        sealY + sealR * Math.sin(a2),
-        "F"
-      );
-    }
-    doc.setFillColor(218, 185, 100);
-    doc.circle(sealX, sealY, sealR, "F");
-    doc.setFillColor(197, 160, 80);
-    doc.circle(sealX, sealY, sealR - 3, "F");
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(1.5);
-    doc.line(sealX - 4, sealY + 1, sealX - 1, sealY + 5);
-    doc.line(sealX - 1, sealY + 5, sealX + 5, sealY - 4);
-    doc.setFillColor(197, 160, 80);
-    doc.rect(sealX - 5, sealY + sealR - 1, 4, 11, "F");
-    doc.rect(sealX + 1, sealY + sealR - 1, 4, 11, "F");
-    doc.setFillColor(197, 160, 80);
-    doc.roundedRect(W - 52, 12, 42, 18, 2, 2, "F");
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(20, 20, 20);
-    doc.text("MapReducer", W - 48, 22);
-    doc.setFontSize(6);
-    doc.setFont("helvetica", "normal");
-    doc.text("AI-Powered Assessment", W - 48, 27);
-    doc.setFontSize(38);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(20, 20, 20);
-    doc.text("CERTIFICATE", W / 2, 50, { align: "center" });
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(110, 110, 110);
-    doc.text("OF ACHIEVEMENT", W / 2, 59, { align: "center" });
-    doc.setDrawColor(197, 160, 80);
-    doc.setLineWidth(0.7);
-    doc.line(W / 2 - 55, 64, W / 2 + 55, 64);
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(90, 90, 90);
-    doc.text("THIS CERTIFICATE IS PRESENTED TO", W / 2, 74, {
-      align: "center",
-    });
-    doc.setFontSize(28);
-    doc.setFont("times", "bolditalic");
-    doc.setTextColor(197, 160, 80);
-    doc.text("MapReducer Student", W / 2, 90, { align: "center" });
-    doc.setDrawColor(197, 160, 80);
-    doc.setLineWidth(0.5);
-    doc.line(W / 2 - 65, 94, W / 2 + 65, 94);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(60, 60, 60);
-    doc.text(
-      `In recognition of successfully completing an AI-powered mock test with a score of`,
-      W / 2,
-      103,
-      { align: "center" }
-    );
-    doc.text(
-      `${percentage}% (${score}/${questions.length} correct) on ${new Date().toLocaleDateString(
-        "en-IN",
-        { day: "numeric", month: "long", year: "numeric" }
-      )}.`,
-      W / 2,
-      110,
-      { align: "center" }
-    );
-    doc.setFillColor(197, 160, 80);
-    doc.roundedRect(W / 2 - 24, 116, 48, 14, 3, 3, "F");
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(20, 20, 20);
-    doc.text(`${percentage}%  |  ${score}/${questions.length}`, W / 2, 125, {
-      align: "center",
-    });
-    const strong = strongAreas();
-    const weak = weakAreas();
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    if (strong.length > 0) {
-      doc.setTextColor(22, 101, 52);
-      doc.text(
-        `Strong: ${strong.slice(0, 5).join("  •  ")}`,
-        W / 2,
-        137,
-        { align: "center" }
-      );
-    }
-    if (weak.length > 0) {
-      doc.setTextColor(153, 27, 27);
-      doc.text(
-        `Focus on: ${weak.slice(0, 5).join("  •  ")}`,
-        W / 2,
-        143,
-        { align: "center" }
-      );
-    }
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Time taken: ${formatTimeTaken(timeTaken)}`, W / 2, 150, {
-      align: "center",
-    });
-    doc.setDrawColor(80, 80, 80);
-    doc.setLineWidth(0.4);
-    doc.line(W / 2 - 30, 168, W / 2 + 30, 168);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(20, 20, 20);
-    doc.text("MapReducer Platform", W / 2, 174, { align: "center" });
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(110, 110, 110);
-    doc.text("Certified AI Assessment", W / 2, 179, { align: "center" });
-    doc.setFillColor(197, 160, 80);
-    doc.rect(0, H - 11, W, 11, "F");
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(20, 20, 20);
-    doc.text(
-      `Generated by MapReducer  •  ${new Date().toLocaleDateString()}  •  MapReducer.com`,
-      W / 2,
-      H - 3.5,
-      { align: "center" }
-    );
-    doc.save("mapreducer_Certificate.pdf");
+
     toast.success("Certificate downloaded!");
   };
 
@@ -765,7 +618,6 @@ export default function MockTest() {
 
               {/* ── SKILL BREAKDOWN — gated by plan ── */}
               {!planLimits?.features.skillBreakdown ? (
-                // FREE: full lock
                 <LockedFeature
                   title="Skill breakdown requires Starter or above"
                   description="See exactly which skills you're strong and weak in, with per-skill scores and progress bars."
@@ -1070,7 +922,6 @@ export default function MockTest() {
 
               {/* ── PDF export gate — pro/premium only ── */}
               {planLimits?.features.pdfExport && !planLimits.features.certificateDownload && (
-                // Pro has pdfExport but not the certificate — show plain export
                 <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Target className="h-4 w-4 text-muted-foreground" />

@@ -18,7 +18,6 @@ const PROTECTED_ROUTES = [
   { path: '/test-history',           name: 'TestHistory' },
   { path: '/profile',                name: 'Profile' },
   { path: '/pricing',                name: 'Pricing' },
-  { path: '/ai-interview',           name: 'InterviewSetup' },
   { path: '/ai-interview/room',      name: 'InterviewRoom' },
   { path: '/ai-interview/analysis',  name: 'InterviewAnalysis' },
   { path: '/admin/seeder',           name: 'AdminSeeder' },

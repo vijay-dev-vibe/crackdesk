@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,7 +13,81 @@ serve(async (req) => {
   }
 
   try {
-    const { action, systemPrompt, userMessage, maxTokens } = await req.json();
+    const body = await req.json();
+
+    // ── Reset Password action ─────────────────────────────────────────
+    if (body.action === "reset-password") {
+      const { user_id, new_password } = body;
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      const { error } = await supabase.auth.admin.updateUserById(user_id, {
+        password: new_password,
+      });
+
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Delete User action ────────────────────────────────────────────
+    if (body.action === "delete-user") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Verify the caller's identity using their JWT
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      if (userError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Use service role to delete the auth user
+      const adminClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      const { error: deleteError } = await adminClient.auth.admin.deleteUser(user.id);
+      if (deleteError) {
+        return new Response(JSON.stringify({ error: deleteError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── AI Interview action (existing) ────────────────────────────────
+    const { action, systemPrompt, userMessage, maxTokens } = body;
 
     const apiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!apiKey) {
@@ -54,6 +129,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ text }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (err) {
     console.error("Edge function error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
@@ -62,4 +138,3 @@ serve(async (req) => {
     });
   }
 });
-

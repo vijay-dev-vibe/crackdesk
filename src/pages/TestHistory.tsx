@@ -133,10 +133,13 @@ export default function TestHistory() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
 
-  // ── Subscription hook ──
-  const { planLimits, loading: subLoading } = useSubscription();
+  const { planLimits, subscription, loading: subLoading } = useSubscription();
 
   useEffect(() => {
+    // Don't run until subscription has resolved — avoids retention being
+    // applied with wrong/null planLimits on first render
+    if (subLoading) return;
+
     let mounted = true;
 
     async function loadResults() {
@@ -148,28 +151,35 @@ export default function TestHistory() {
           return;
         }
 
-        const { data, error: dbErr } = await supabase
+        // ── Determine retention cutoff ──────────────────────────────────
+        // Treat missing, null, undefined, or Infinity as "no limit" (paid plan).
+        // Only apply a cutoff when retentionDays is a real finite number.
+        const retentionDays = planLimits?.historyRetentionDays;
+        const hasLimit =
+          retentionDays !== undefined &&
+          retentionDays !== null &&
+          Number.isFinite(retentionDays);
+
+        // If there IS a finite retention window, push the date filter to
+        // Supabase directly so we never fetch rows the user can't see anyway.
+        const cutoffIso = hasLimit
+          ? new Date(Date.now() - (retentionDays as number) * 24 * 60 * 60 * 1000).toISOString()
+          : null;
+
+        let query = supabase
           .from("test_results")
           .select("*")
           .eq("user_id", session.user.id)
           .order("created_at", { ascending: false });
 
+        if (cutoffIso) {
+          query = query.gte("created_at", cutoffIso);
+        }
+
+        const { data, error: dbErr } = await query;
         if (dbErr) throw new Error(dbErr.message);
 
-        console.log("Results from DB:", data);
-
-        // ── Apply retention window filter client-side ──
-        const retentionDays = planLimits?.historyRetentionDays ?? 7;
-        const cutoff =
-          retentionDays === Infinity
-            ? null
-            : new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-
-        const retained = (data ?? []).filter((r: TestResult) =>
-          cutoff === null || new Date(r.created_at) >= cutoff
-        );
-
-        if (mounted) setResults(retained);
+        if (mounted) setResults(data ?? []);
       } catch (e: any) {
         console.error("[TestHistory] Load error:", e.message);
         if (mounted) setError(e.message ?? "Failed to load results.");
@@ -178,10 +188,9 @@ export default function TestHistory() {
       }
     }
 
-    // Wait until planLimits has resolved before fetching so retention is applied correctly
-    if (!subLoading) loadResults();
+    loadResults();
     return () => { mounted = false; };
-  }, [planLimits, subLoading]);
+  }, [planLimits, subLoading]); // re-runs if subscription changes
 
   const filtered = results.filter((r) => {
     const pct = getPct(r);
@@ -192,16 +201,25 @@ export default function TestHistory() {
   });
 
   const totalTests = results.length;
-
   const validResults = results.filter(r => r.score != null && r.total_questions > 0);
-
   const avgScore = validResults.length > 0
     ? Math.round(validResults.reduce((a, r) => a + getPct(r), 0) / validResults.length)
     : 0;
-
   const bestScore = validResults.length > 0
     ? Math.max(...validResults.map(getPct))
     : 0;
+
+  // ── Show upgrade banner only when:
+  //    1. planLimits has loaded (not null)
+  //    2. retention is a real finite number (free/limited plan)
+  //    3. subscription is NOT a paid/unlimited plan
+  const retentionDays = planLimits?.historyRetentionDays;
+  const showUpgradeBanner =
+    !subLoading &&
+    planLimits !== null &&
+    retentionDays !== undefined &&
+    retentionDays !== null &&
+    Number.isFinite(retentionDays);
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -210,7 +228,14 @@ export default function TestHistory() {
 
         <div className="mb-6">
           <h1 className="font-display text-2xl font-bold tracking-tight">Test History</h1>
-          <p className="text-sm text-muted-foreground mt-1">All your past attempts and progress</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            All your past attempts and progress
+            {subscription && (
+              <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted border border-border capitalize">
+                {subscription.plan_type} plan
+              </span>
+            )}
+          </p>
         </div>
 
         {error && (
@@ -222,7 +247,10 @@ export default function TestHistory() {
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
             { label: "Total tests", value: totalTests.toString(), color: "" },
-            { label: "Avg score", value: `${avgScore}%`, color: avgScore >= 70 ? "text-green-600" : avgScore >= 50 ? "text-amber-600" : "text-red-600" },
+            {
+              label: "Avg score", value: `${avgScore}%`,
+              color: avgScore >= 70 ? "text-green-600" : avgScore >= 50 ? "text-amber-600" : "text-red-600",
+            },
             { label: "Personal best", value: `${bestScore}%`, color: "text-green-600" },
           ].map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
@@ -236,11 +264,11 @@ export default function TestHistory() {
 
         {!loading && totalTests > 0 && <MiniBarChart results={results} />}
 
-        {/* ── Retention limit banner ── */}
-        {planLimits && planLimits.historyRetentionDays !== Infinity && (
+        {/* ── Upgrade banner — only shown on free/limited plans ── */}
+        {showUpgradeBanner && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700 flex items-center justify-between">
             <span>
-              Showing last {planLimits.historyRetentionDays} days.{" "}
+              Showing last {retentionDays} days of history.{" "}
               <Link to="/pricing" className="font-semibold underline">
                 Upgrade to Pro
               </Link>{" "}

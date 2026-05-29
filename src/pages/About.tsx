@@ -103,15 +103,10 @@ export default function About() {
 
               <p className="mx-auto max-w-5xl text-lg leading-10 text-gray-300 md:text-2xl">
 
-                A next-generation AI recruitment platform developed by
+                The AI platform that maps your skills to the right opportunities — built by
                 <span className="font-semibold text-yellow-400">
-                  {" "}Minimalize Technology{" "}
+                  {" "}Minimize Technology{" "}
                 </span>
-
-                that intelligently analyzes resumes, compares job descriptions,
-                evaluates candidate fitment, and conducts AI-powered interview
-                assessments to help organizations hire smarter, faster, and more efficiently.
-
               </p>
 
               {/* BUTTONS */}
@@ -236,7 +231,7 @@ export default function About() {
 
               <p className="text-lg leading-10 text-gray-300">
 
-                Built by Minimalize Technology, this platform represents our vision to
+                Built by Minimize Technology, this platform represents our vision to
                 modernize recruitment through intelligent automation, predictive hiring systems,
                 and futuristic software innovation.
 

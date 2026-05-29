@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import {
   GraduationCap, Crown, Award, BookOpen,
   TrendingUp, Calendar, Pencil, X, Save, Loader2, Camera,
+  KeyRound, Trash2, AlertTriangle, Eye, EyeOff, CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getDepartmentMeta } from "@/lib/studentQuestions";
@@ -21,7 +22,7 @@ interface ProfileData {
   email:        string;
   college_name: string;
   departments:  string[];
-  plan_type:    string; // ← now sourced from subscriptions table
+  plan_type:    string;
   created_at:   string;
   avatar_key:   string | null;
   avatar_url:   string | null;
@@ -33,7 +34,6 @@ interface Stats {
   bestScore:  number;
 }
 
-// ── Plan display config ───────────────────────────────────────────────────────
 const PLAN_DISPLAY: Record<string, { label: string; color: string }> = {
   free:     { label: "Free",    color: "bg-muted text-muted-foreground" },
   trial:    { label: "Trial",   color: "bg-orange-100 text-orange-700 border-orange-200" },
@@ -43,16 +43,37 @@ const PLAN_DISPLAY: Record<string, { label: string; color: string }> = {
 };
 
 export default function Profile() {
-  const [profile,     setProfile]     = useState<ProfileData | null>(null);
-  const [stats,       setStats]       = useState<Stats>({ testsTaken:0, avgScore:0, bestScore:0 });
-  const [editing,     setEditing]     = useState(false);
-  const [editName,    setEditName]    = useState("");
-  const [editCollege, setEditCollege] = useState("");
-  const [saving,      setSaving]      = useState(false);
-  const [loading,     setLoading]     = useState(true);
-  const [showPicker,  setShowPicker]  = useState(false);
-  const [avatarKey,   setAvatarKey]   = useState<string | null>(null);
-  const [userId,      setUserId]      = useState<string>("");
+  const [profile,         setProfile]         = useState<ProfileData | null>(null);
+  const [stats,           setStats]           = useState<Stats>({ testsTaken:0, avgScore:0, bestScore:0 });
+  const [editing,         setEditing]         = useState(false);
+  const [editName,        setEditName]        = useState("");
+  const [editCollege,     setEditCollege]     = useState("");
+  const [saving,          setSaving]          = useState(false);
+  const [loading,         setLoading]         = useState(true);
+  const [showPicker,      setShowPicker]      = useState(false);
+  const [avatarKey,       setAvatarKey]       = useState<string | null>(null);
+  const [userId,          setUserId]          = useState<string>("");
+
+  // ── Change Password modal ────────────────────────────────────────────────
+  const [showCPModal,     setShowCPModal]     = useState(false);
+  // step: "verify" | "reset"
+  const [cpStep,          setCpStep]          = useState<"verify"|"reset">("verify");
+  const [cpEmail,         setCpEmail]         = useState("");
+  const [cpDob,           setCpDob]           = useState("");
+  const [cpCollege,       setCpCollege]       = useState("");
+  const [cpNewPassword,   setCpNewPassword]   = useState("");
+  const [cpConfirmPass,   setCpConfirmPass]   = useState("");
+  const [cpShowNew,       setCpShowNew]       = useState(false);
+  const [cpShowConfirm,   setCpShowConfirm]   = useState(false);
+  const [cpError,         setCpError]         = useState("");
+  const [cpVerifying,     setCpVerifying]     = useState(false);
+  const [cpSaving,        setCpSaving]        = useState(false);
+
+  // ── Delete Account modal ─────────────────────────────────────────────────
+  const [showDAModal,     setShowDAModal]     = useState(false);
+  const [deleteInput,     setDeleteInput]     = useState("");
+  const [deleting,        setDeleting]        = useState(false);
+  const [deleteError,     setDeleteError]     = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -61,15 +82,12 @@ export default function Profile() {
       const uid = session.user.id;
       setUserId(uid);
 
-      // ── 1. Fetch profile row ────────────────────────────────────────────────
       const { data: prof } = await (supabase
         .from("profiles")
         .select("*")
         .eq("id", uid)
         .maybeSingle() as any);
 
-      // ── 2. FIX: Fetch real plan from user_subscriptions table ─────────────
-      //    Falls back to profiles.plan_type, then "free"
       const { data: sub } = await (supabase
         .from("user_subscriptions")
         .select("plan_type")
@@ -89,7 +107,7 @@ export default function Profile() {
           email:        prof.email        || session.user.email || "",
           college_name: prof.college_name || "",
           departments:  prof.departments  || [],
-          plan_type:    realPlanType,       // ← from subscriptions
+          plan_type:    realPlanType,
           created_at:   prof.created_at,
           avatar_key:   prof.avatar_key   || null,
           avatar_url:   prof.avatar_url   || null,
@@ -107,7 +125,7 @@ export default function Profile() {
           email:        session.user.email || "",
           college_name: "",
           departments:  [],
-          plan_type:    realPlanType,       // ← from subscriptions
+          plan_type:    realPlanType,
           created_at:   session.user.created_at,
           avatar_key:   null,
           avatar_url:   null,
@@ -116,7 +134,6 @@ export default function Profile() {
         setAvatarKey("adventurer:luna");
       }
 
-      // ── 3. Fetch test stats ─────────────────────────────────────────────────
       const { data: results } = await (supabase
         .from("test_results")
         .select("score, total_questions")
@@ -166,6 +183,135 @@ export default function Profile() {
     setSaving(false);
   };
 
+  /* ── Open Change Password modal ─────────────────────────────────────────── */
+  const openCPModal = () => {
+    setCpStep("verify");
+    setCpEmail("");
+    setCpDob("");
+    setCpCollege("");
+    setCpNewPassword("");
+    setCpConfirmPass("");
+    setCpError("");
+    setShowCPModal(true);
+  };
+
+  /* ── Step 1: Verify identity against DB ─────────────────────────────────── */
+  const handleVerifyIdentity = async () => {
+    setCpError("");
+    if (!cpEmail || !cpDob || !cpCollege) {
+      setCpError("Please fill in all fields.");
+      return;
+    }
+    setCpVerifying(true);
+
+    // Fetch the profile row matching the entered email
+    const { data: prof, error } = await (supabase
+      .from("profiles")
+      .select("email, college_name, date_of_birth")
+      .eq("email", cpEmail.trim().toLowerCase())
+      .maybeSingle() as any);
+
+    setCpVerifying(false);
+
+    if (error || !prof) {
+      setCpError("No account found with that email.");
+      return;
+    }
+
+    const dobMatch     = prof.date_of_birth === cpDob;           // "YYYY-MM-DD"
+    const collegeMatch = prof.college_name?.trim().toLowerCase() === cpCollege.trim().toLowerCase();
+
+    if (!dobMatch || !collegeMatch) {
+      setCpError("Details do not match our records. Please check and try again.");
+      return;
+    }
+
+    // All matched — proceed to reset step
+    setCpStep("reset");
+  };
+
+  /* ── Step 2: Save new password ───────────────────────────────────────────── */
+  const handleResetPassword = async () => {
+    setCpError("");
+    if (!cpNewPassword || !cpConfirmPass) {
+      setCpError("Please fill in both password fields.");
+      return;
+    }
+    if (cpNewPassword.length < 6) {
+      setCpError("Password must be at least 6 characters.");
+      return;
+    }
+    if (cpNewPassword !== cpConfirmPass) {
+      setCpError("Passwords do not match.");
+      return;
+    }
+
+    setCpSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: cpNewPassword });
+    setCpSaving(false);
+
+    if (error) {
+      setCpError("Failed to update password: " + error.message);
+    } else {
+      toast.success("Password changed successfully!");
+      setShowCPModal(false);
+    }
+  };
+
+  /* ── Delete account ──────────────────────────────────────────────────────── */
+const handleDeleteAccount = async () => {
+  setDeleteError("");
+  const expected = profile?.college_name?.trim().toLowerCase();
+  const entered  = deleteInput.trim().toLowerCase();
+
+  if (!expected) {
+    setDeleteError("No college name found on your profile. Please set it first.");
+    return;
+  }
+  if (entered !== expected) {
+    setDeleteError("College name doesn't match. Please type it exactly.");
+    return;
+  }
+
+  setDeleting(true);
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) throw new Error("Not logged in");
+    const uid = session.user.id;
+
+    // 1. Delete related table data first
+    await (supabase.from("test_results").delete().eq("user_id", uid) as any);
+    await (supabase.from("user_subscriptions").delete().eq("user_id", uid) as any);
+    await (supabase.from("profiles").delete().eq("id", uid) as any);
+
+    // 2. Call Edge Function to delete the auth user
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-interview`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "delete-user" }),
+      }
+    );
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error || "Failed to delete auth user");
+    }
+
+    // 3. Sign out and redirect
+    await supabase.auth.signOut();
+    toast.success("Account deleted successfully.");
+    window.location.href = "/";
+  } catch (err: any) {
+    toast.error(err.message || "Failed to delete account. Please contact support.");
+    setDeleting(false);
+  }
+};
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-muted/30">
@@ -181,7 +327,6 @@ export default function Profile() {
     profile?.email?.split("@")[0] ||
     "User";
 
-  // Plan badge config — falls back to "free" style if unknown
   const planMeta = PLAN_DISPLAY[profile?.plan_type ?? "free"] ?? PLAN_DISPLAY.free;
 
   return (
@@ -189,35 +334,67 @@ export default function Profile() {
       <Navbar />
 
       <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="flex items-center gap-3">
-          <motion.div
-            initial={{ scale:0.8, opacity:0 }}
-            animate={{ scale:1,   opacity:1 }}
-            className="relative shrink-0 cursor-pointer group"
-            onClick={() => setShowPicker(true)}
-            title="Change avatar"
-          >
-            <AvatarImg avatarKey={avatarKey} size={48} className="ring-2 ring-primary/40 ring-offset-2" />
-            <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background:"rgba(0,0,0,0.45)" }}>
-              <Camera className="h-4 w-4 text-white" />
-            </div>
-          </motion.div>
 
-          <div>
-            <motion.h1
-              initial={{ opacity:0, x:-12 }}
-              animate={{ opacity:1, x:0 }}
-              className="font-display text-2xl font-bold text-foreground md:text-3xl"
+        {/* ── Top header row ── */}
+        <div className="flex items-center justify-between">
+          {/* Left: avatar + name */}
+          <div className="flex items-center gap-3">
+            <motion.div
+              initial={{ scale:0.8, opacity:0 }}
+              animate={{ scale:1,   opacity:1 }}
+              className="relative shrink-0 cursor-pointer group"
+              onClick={() => setShowPicker(true)}
+              title="Change avatar"
             >
-              {firstName}
-            </motion.h1>
-            <p className="text-sm text-muted-foreground">
-              Manage your account and view your stats
-            </p>
+              <AvatarImg avatarKey={avatarKey} size={48} className="ring-2 ring-primary/40 ring-offset-2" />
+              <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background:"rgba(0,0,0,0.45)" }}>
+                <Camera className="h-4 w-4 text-white" />
+              </div>
+            </motion.div>
+
+            <div>
+              <motion.h1
+                initial={{ opacity:0, x:-12 }}
+                animate={{ opacity:1, x:0 }}
+                className="font-display text-2xl font-bold text-foreground md:text-3xl"
+              >
+                {firstName}
+              </motion.h1>
+              <p className="text-sm text-muted-foreground">
+                Manage your account and view your stats
+              </p>
+            </div>
           </div>
+
+          {/* ── RIGHT: Change Password + Delete Account ── */}
+          <motion.div
+            initial={{ opacity:0, x:16 }}
+            animate={{ opacity:1, x:0 }}
+            className="flex flex-col gap-2 items-end"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-sm"
+              onClick={openCPModal}
+            >
+              <KeyRound className="h-4 w-4" />
+              Change Password
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-sm border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+              onClick={() => { setShowDAModal(true); setDeleteInput(""); setDeleteError(""); }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Account
+            </Button>
+          </motion.div>
         </div>
 
+        {/* ── Cards ── */}
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
           <motion.div initial={{ opacity:0, y:15 }} animate={{ opacity:1, y:0 }} className="lg:col-span-2">
             <Card className="shadow-card border-border">
@@ -281,16 +458,11 @@ export default function Profile() {
                     <span className="text-muted-foreground">College:</span>
                     <span className="font-medium text-foreground">{profile?.college_name || "Not set"}</span>
                   </div>
-
-                  {/* ── FIX: Plan badge now shows real plan from subscriptions ── */}
                   <div className="flex items-center gap-3 text-sm">
                     <Crown className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-muted-foreground">Plan:</span>
-                    <Badge className={`capitalize border ${planMeta.color}`}>
-                      {planMeta.label}
-                    </Badge>
+                    <Badge className={`capitalize border ${planMeta.color}`}>{planMeta.label}</Badge>
                   </div>
-
                   <div className="flex items-center gap-3 text-sm">
                     <Calendar className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-muted-foreground">Joined:</span>
@@ -300,7 +472,6 @@ export default function Profile() {
                         : "—"}
                     </span>
                   </div>
-
                   <div className="flex items-start gap-3 text-sm">
                     <BookOpen className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                     <span className="text-muted-foreground shrink-0">Departments:</span>
@@ -359,6 +530,219 @@ export default function Profile() {
           onSelect={handleAvatarSelect}
           onClose={() => setShowPicker(false)}
         />
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          CHANGE PASSWORD MODAL
+      ════════════════════════════════════════════════════════════════════ */}
+      {showCPModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale:0.92, opacity:0 }}
+            animate={{ scale:1,    opacity:1 }}
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 border border-border"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                  <KeyRound className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-display text-lg font-bold text-foreground leading-tight">Change Password</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {cpStep === "verify" ? "Step 1 of 2 — Verify your identity" : "Step 2 of 2 — Set new password"}
+                  </p>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowCPModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Step indicator */}
+            <div className="flex gap-2 mb-6">
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${cpStep === "verify" ? "bg-primary" : "bg-primary"}`} />
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${cpStep === "reset"  ? "bg-primary" : "bg-muted"}`} />
+            </div>
+
+            {cpStep === "verify" ? (
+              /* ── STEP 1: Identity verification ── */
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm">Email Address</Label>
+                  <Input
+                    className="mt-1.5"
+                    type="email"
+                    placeholder="Enter your registered email"
+                    value={cpEmail}
+                    onChange={e => { setCpEmail(e.target.value); setCpError(""); }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Date of Birth</Label>
+                  <Input
+                    className="mt-1.5"
+                    type="date"
+                    value={cpDob}
+                    onChange={e => { setCpDob(e.target.value); setCpError(""); }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">College Name</Label>
+                  <Input
+                    className="mt-1.5"
+                    placeholder="Enter your college name exactly"
+                    value={cpCollege}
+                    onChange={e => { setCpCollege(e.target.value); setCpError(""); }}
+                  />
+                </div>
+
+                {cpError && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    ❌ {cpError}
+                  </p>
+                )}
+
+                <div className="flex gap-3 justify-end pt-1">
+                  <Button variant="outline" onClick={() => setShowCPModal(false)}>Cancel</Button>
+                  <Button variant="hero" onClick={handleVerifyIdentity} disabled={cpVerifying} className="gap-2">
+                    {cpVerifying
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</>
+                      : "Verify & Continue →"
+                    }
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* ── STEP 2: Set new password ── */
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 mb-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  Identity verified successfully!
+                </div>
+
+                <div>
+                  <Label className="text-sm">New Password</Label>
+                  <div className="relative mt-1.5">
+                    <Input
+                      type={cpShowNew ? "text" : "password"}
+                      placeholder="Min. 6 characters"
+                      value={cpNewPassword}
+                      onChange={e => { setCpNewPassword(e.target.value); setCpError(""); }}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCpShowNew(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {cpShowNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-sm">Confirm New Password</Label>
+                  <div className="relative mt-1.5">
+                    <Input
+                      type={cpShowConfirm ? "text" : "password"}
+                      placeholder="Re-enter new password"
+                      value={cpConfirmPass}
+                      onChange={e => { setCpConfirmPass(e.target.value); setCpError(""); }}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCpShowConfirm(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {cpShowConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {cpError && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    ❌ {cpError}
+                  </p>
+                )}
+
+                <div className="flex gap-3 justify-end pt-1">
+                  <Button variant="outline" onClick={() => setCpStep("verify")}>← Back</Button>
+                  <Button variant="hero" onClick={handleResetPassword} disabled={cpSaving} className="gap-2">
+                    {cpSaving
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
+                      : <><KeyRound className="h-4 w-4" /> Update Password</>
+                    }
+                  </Button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          DELETE ACCOUNT MODAL
+      ════════════════════════════════════════════════════════════════════ */}
+      {showDAModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale:0.92, opacity:0 }}
+            animate={{ scale:1,    opacity:1 }}
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 border border-red-200"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <h2 className="font-display text-lg font-bold text-red-600">Delete Account</h2>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowDAModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">
+              ⚠️ This action is <strong>permanent and irreversible</strong>. All your data, test results, and subscription info will be deleted.
+            </div>
+
+            <div className="mb-4">
+              <Label className="text-sm font-medium text-foreground">
+                Type your college name to confirm:
+                <span className="ml-1 text-muted-foreground font-normal">
+                  ({profile?.college_name || "not set"})
+                </span>
+              </Label>
+              <Input
+                className="mt-2 border-red-200 focus-visible:ring-red-400"
+                placeholder={`Type "${profile?.college_name || "your college name"}" exactly`}
+                value={deleteInput}
+                onChange={e => { setDeleteInput(e.target.value); setDeleteError(""); }}
+              />
+              {deleteError && (
+                <p className="mt-1.5 text-xs text-red-600">{deleteError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowDAModal(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAccount}
+                disabled={deleting || !deleteInput}
+                className="gap-2"
+              >
+                {deleting
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Deleting…</>
+                  : <><Trash2 className="h-4 w-4" /> Delete My Account</>
+                }
+              </Button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

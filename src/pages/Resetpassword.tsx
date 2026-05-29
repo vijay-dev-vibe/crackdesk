@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,17 +14,12 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
-  const [validSession, setValidSession] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  useEffect(() => {
-    // Supabase puts the session in the URL hash after clicking email link
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setValidSession(true);
-      }
-    });
-  }, []);
+  // Get userId passed from ForgotPassword verification
+  const userId = location.state?.userId;
+  const validSession = !!userId;
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,13 +36,29 @@ export default function ResetPassword() {
 
     setLoading(true);
 
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    // Call ai-interview edge function with reset-password action
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-interview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: "reset-password",
+          user_id: userId,
+          new_password: password,
+        }),
+      }
+    );
 
-    if (updateError) {
-      setError(updateError.message);
+    const result = await response.json();
+
+    if (!response.ok || result.error) {
+      setError(result.error || "Failed to reset password. Try again.");
     } else {
       setDone(true);
-      // Auto-redirect to login after 3 seconds
       setTimeout(() => navigate("/login"), 3000);
     }
 
@@ -100,12 +111,12 @@ export default function ResetPassword() {
 
           ) : !validSession ? (
             <div className="text-center">
-              <h1 className="font-display text-2xl font-bold text-foreground">Invalid or expired link</h1>
+              <h1 className="font-display text-2xl font-bold text-foreground">Invalid access</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                This reset link has expired or already been used.
+                Please verify your identity first before resetting your password.
               </p>
               <Link to="/forgot-password">
-                <Button variant="hero" className="mt-6 w-full">Request a new link</Button>
+                <Button variant="hero" className="mt-6 w-full">Go to Forgot Password</Button>
               </Link>
             </div>
 

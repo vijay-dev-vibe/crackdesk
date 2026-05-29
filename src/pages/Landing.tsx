@@ -47,7 +47,7 @@ export default function Landing() {
               initial="hidden" animate="visible" variants={fadeUp} custom={1}
             >
               Ace Your Dream Job with{" "}
-              <span className="text-gradient">AI-Tailoured</span> Mock Tests
+              <span className="text-gradient">AI-Tailored</span> Mock Tests
             </motion.h1>
             <motion.p
               className="mt-5 text-lg text-muted-foreground md:text-xl"

@@ -22,9 +22,9 @@ import AdminSeeder from "@/pages/AdminSeeder";
 import ForgotPassword from "@/pages/Forgotpassword";
 import ResetPassword from "@/pages/Resetpassword";
 import AdminTestPanel from "@/pages/AdminTestPanel";
-import about from "@/pages/About";
 import About from "@/pages/About";
-
+import LimaBot from "@/components/LimaBot";
+import Checkout from "./pages/Checkout";
 
 const queryClient = new QueryClient();
 
@@ -34,58 +34,34 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        {/* ✅ LimaBot lives outside <Routes> so it shows on every page */}
+        <LimaBot />
+
         <Routes>
           {/* PUBLIC */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />  {/* ✅ PUBLIC */}
-          <Route path="/reset-password" element={<ResetPassword />} />    {/* ✅ PUBLIC */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* PROTECTED - Regular Users */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute><Dashboard /></ProtectedRoute>
-          } />
-          <Route path="/mock-test" element={
-            <ProtectedRoute><MockTest /></ProtectedRoute>
-          } />
-          <Route path="/test-library" element={
-            <ProtectedRoute><TestLibrary /></ProtectedRoute>
-          } />
-          <Route path="/test-history" element={
-            <ProtectedRoute><TestHistory /></ProtectedRoute>
-          } />
-          <Route path="/profile" element={
-            <ProtectedRoute><Profile /></ProtectedRoute>
-          } />
-          <Route path="/pricing" element={
-            <ProtectedRoute><Pricing /></ProtectedRoute>
-          } />
-          <Route path="/ai-interview" element={
-            <ProtectedRoute><InterviewRoom /></ProtectedRoute>
-          } />
-          <Route path="/ai-interview/room" element={
-            <ProtectedRoute><InterviewRoom /></ProtectedRoute>
-          } />
-          <Route path="/admin/seeder" element={
-            <ProtectedRoute><AdminSeeder /></ProtectedRoute>
-          } />
-          <Route path="/admin-test" element={
-            <ProtectedRoute><AdminTestPanel /></ProtectedRoute>
-          } />
-          <Route path="/ai-interview/analysis" element={
-            <ProtectedRoute><InterviewAnalysis /></ProtectedRoute>
-          } />
-          <Route path="/About" element={
-            <ProtectedRoute><About /></ProtectedRoute>
-          } />
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/mock-test" element={<ProtectedRoute><MockTest /></ProtectedRoute>} />
+          <Route path="/test-library" element={<ProtectedRoute><TestLibrary /></ProtectedRoute>} />
+          <Route path="/test-history" element={<ProtectedRoute><TestHistory /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
+          <Route path="/ai-interview" element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
+          <Route path="/ai-interview/room" element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
+          <Route path="/admin/seeder" element={<AdminRoute><AdminSeeder /></AdminRoute>} />
+          <Route path="/admin-test" element={<ProtectedRoute><AdminTestPanel /></ProtectedRoute>} />
+          <Route path="/ai-interview/analysis" element={<ProtectedRoute><InterviewAnalysis /></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
+          <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
 
-          {/* ADMIN DASHBOARD - Protected by AdminRoute */}
-          <Route path="/admin/dashboard" element={
-            <AdminRoute>
-              <AdminDashboard />
-            </AdminRoute>
-          } />
+          {/* ADMIN */}
+          <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFound />} />

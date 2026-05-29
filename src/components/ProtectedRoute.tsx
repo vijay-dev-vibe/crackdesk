@@ -9,14 +9,23 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const location = useLocation();
 
   useEffect(() => {
+    // Check session immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthenticated(!!session);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthenticated(!!session);
-      setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // ONLY update auth state on explicit sign-out or sign-in
+      // Ignore TOKEN_REFRESHED and other noise that can cause flicker
+      if (event === "SIGNED_OUT") {
+        setAuthenticated(false);
+        setLoading(false);
+      } else if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        setAuthenticated(!!session);
+        setLoading(false);
+      }
+      // Deliberately ignore: TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY
     });
 
     return () => subscription.unsubscribe();
@@ -31,10 +40,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!authenticated) {
-    // Save where user was trying to go so we can redirect after login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;
 }
-

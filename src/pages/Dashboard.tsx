@@ -251,16 +251,6 @@ export default function Dashboard() {
       const departments: string[] = (profile as any)?.departments ?? user.user_metadata?.departments ?? [];
       const { data: existing } = await supabase.from("student_questions").select("id")
         .eq("user_id", user.id).limit(1);
-
-      if ((!existing || existing.length === 0) && departments.length > 0) {
-        setGenerating(true); setGeneratingSectors(departments);
-        toast.loading("Preparing your question bank!", { id: "gen" });
-        try {
-          await initializeStudentQuestions(user.id, departments);
-          toast.success("Questions ready! 🎉", { id: "gen" });
-        } catch { toast.error("Generation had issues.", { id: "gen" }); }
-        finally { setGenerating(false); }
-      }
     };
     init();
   }, []);
@@ -341,12 +331,12 @@ export default function Dashboard() {
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, textAlign: "left" }}>
                 {[
-                  "📊 Score Overview Charts",
-                  "📈 Weekly Activity Heatmap",
-                  "🎯 Score Distribution",
-                  "📉 Performance Trends",
-                  "💾 Unlimited History",
-                  "📄 PDF Report Export"
+                  " Score Overview Charts",
+                  " Weekly Activity Heatmap",
+                  " Score Distribution",
+                  " Performance Trends",
+                  " Unlimited History",
+                  " PDF Report Export"
                 ].map((feature, i) => (
                   <div key={i} style={{ 
                     color: "rgba(255,255,255,0.7)", 
@@ -375,19 +365,6 @@ export default function Dashboard() {
                   boxShadow: `0 4px 20px rgba(212,160,23,0.4)`
                 }}>
                   Upgrade to Pro
-                </button>
-              </Link>
-              <Link to="/mock-test">
-                <button style={{
-                  background: "rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.8)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 10,
-                  padding: "12px 32px",
-                  fontSize: 14,
-                  cursor: "pointer"
-                }}>
-                  Take a Test
                 </button>
               </Link>
             </div>
@@ -458,15 +435,6 @@ export default function Dashboard() {
                 <BookOpen size={14} /> Take Test
               </button>
             </Link>
-            {canUserAccess(userPlan, "exportResults") && (
-              <button style={{
-                background: "#1a1a2e", color: "#D4A017", border: "1px solid rgba(212,160,23,0.3)",
-                borderRadius: 10, padding: "9px 14px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6, fontSize: 13
-              }}>
-                <Download size={14} /> Export
-              </button>
-            )}
           </div>
         </motion.div>
 

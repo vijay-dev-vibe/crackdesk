@@ -11,7 +11,7 @@ const navLinks = [
   { label: "Home",         href: "/"             },
   { label: "Dashboard",    href: "/dashboard"    },
   { label: "Mock Test",    href: "/mock-test"    },
-  { label: "AI Interview", href: "/ai-interview", badge: "NEW" },
+  { label: "AI-Interview", href: "/ai-interview", badge: "NEW" },
   { label: "History",      href: "/test-history" },
   { label: "Pricing",      href: "/pricing"      },
   { label: "About",        href: "/About"        },

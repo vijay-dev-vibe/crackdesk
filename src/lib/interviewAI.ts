@@ -19,7 +19,7 @@ export async function callInterviewAI({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant', // or any OpenRouter model
+        model: "llama-3.3-70b-versatile", // or any OpenRouter model
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },

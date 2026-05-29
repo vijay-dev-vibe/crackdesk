@@ -1,152 +1,156 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, RotateCcw, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Loader2, RotateCcw, ArrowLeft, CheckCircle2, TrendingUp, AlertTriangle, Award, Clock, Mic } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { callInterviewAI, parseAIJson } from "@/lib/interviewAI";
 
-interface QuestionScore { id: number; score: number; feedback: string; keyword_hits: string[]; }
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface QuestionScore { id: number; score: number; feedback: string; keyword_hits?: string[] }
 interface AnalysisResult {
   overall_score: number; overall_grade: string; summary: string;
   hire_recommendation: string; strengths: string[]; improvements: string[];
-  question_scores: QuestionScore[]; integrity_note: string;
+  question_scores: QuestionScore[]; integrity_note?: string;
+  // accept both camelCase and snake_case from AI
+  overallScore?: number; overallGrade?: string;
+  hireRecommendation?: string; questionScores?: QuestionScore[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WORLD-CLASS ANALYSIS PROMPT
-// Evaluates 8 professional dimensions, detects filler words, estimates
-// communication quality, applies penalty for tab violations, and returns
-// richly-detailed per-question feedback with domain-relevant keyword matching.
-// ─────────────────────────────────────────────────────────────────────────────
-const ANALYSIS_PROMPT = `You are a world-class interview evaluator with 20+ years of experience at top-tier companies (Google, McKinsey, Goldman Sachs). Your evaluations are trusted to make final hiring decisions.
+// ─── Analysis Prompt ──────────────────────────────────────────────────────────
+const ANALYSIS_PROMPT = `You are a world-class interview evaluator with 20+ years of experience at top-tier companies. Your evaluations are trusted to make final hiring decisions.
 
-Evaluate the candidate across these 8 professional dimensions:
-1. Technical Depth & Accuracy — correctness, specificity, use of industry terminology
-2. Communication Clarity — structure, conciseness, absence of filler phrases ("um", "like", "you know")
-3. Problem-Solving Approach — frameworks used (STAR, MECE, first-principles), logical flow
-4. Relevance & Focus — how directly the answer addresses the question asked
-5. Self-Awareness & Growth — acknowledgment of weaknesses, learning mindset
-6. Leadership & Impact — ownership language, quantified results, team influence
-7. Cultural Fit & Professionalism — tone, enthusiasm, alignment to role expectations
-8. Recall & Consistency — coherence across answers, no contradictions
+Evaluate the candidate across 8 professional dimensions:
+1. Technical Depth & Accuracy
+2. Communication Clarity
+3. Problem-Solving Approach (STAR, MECE, first-principles)
+4. Relevance & Focus
+5. Self-Awareness & Growth
+6. Leadership & Impact
+7. Cultural Fit & Professionalism
+8. Recall & Consistency
 
 Scoring rules:
-- overall_score: weighted average of all 8 dimensions (0–100). Do NOT inflate. Be honest and calibrated to real hiring bar.
-- Apply a -2 point penalty per tab violation (max -15) to overall_score.
-- If answer is very short (< 15 words), score that question max 4/10.
-- If answer shows strong STAR structure with quantified results, score 8–10/10.
-- overall_grade: "A+" (90–100), "A" (80–89), "B+" (70–79), "B" (60–69), "C" (50–59), "D" (below 50)
-- hire_recommendation: "Strong Hire" (85+), "Hire" (70–84), "Maybe" (55–69), "No Hire" (below 55)
+- overall_score: weighted 0–100. Be calibrated; do NOT inflate.
+- Apply -2 per tab violation (max -15) to overall_score.
+- Short answers (<15 words): max 4/10 for that question.
+- STAR structure with quantified results: 8–10/10.
+- overall_grade: "A+" (90-100), "A" (80-89), "B+" (70-79), "B" (60-69), "C" (50-59), "D" (<50)
+- hire_recommendation: "Strong Hire" (85+), "Hire" (70-84), "Maybe" (55-69), "No Hire" (<55)
+- keyword_hits: 2-5 actual keywords from their answer showing domain knowledge.
+- Per-question feedback: specific, actionable, reference their actual words.
+- strengths: 3 specific with evidence, not generic.
+- improvements: 2-3 highly actionable with examples.
+- integrity_note: professional note if violations > 0, else "".
 
-For keyword_hits: extract 2–5 actual domain-relevant keywords or phrases the candidate used that demonstrate knowledge (e.g. "REST API", "regression analysis", "stakeholder alignment"). Only include words actually present in their answer.
-
-For feedback per question: be specific, actionable, and reference their actual answer. Mention what was good, what was missing, and one concrete tip to improve.
-
-For strengths: give 3 specific strengths with evidence from their answers (not generic praise).
-For improvements: give 2–3 highly actionable improvements with examples of what a better answer would include.
-
-For integrity_note: if tab violations > 0, write a professional note about the integrity concern and its impact on trust. If none, return "".
-
-Return ONLY valid JSON with zero markdown, no extra keys:
+Return ONLY valid JSON, zero markdown:
 {
   "overall_score": number,
   "overall_grade": "string",
-  "summary": "2–3 sentence calibrated assessment referencing specific role and candidate performance",
+  "summary": "2-3 sentence calibrated assessment",
   "hire_recommendation": "string",
-  "strengths": ["specific strength with evidence", ...],
-  "improvements": ["specific actionable improvement", ...],
-  "question_scores": [
-    {
-      "id": number,
-      "score": number 0–10,
-      "feedback": "specific, actionable, 2–3 sentence feedback referencing their actual answer",
-      "keyword_hits": ["actual keyword from answer", ...]
-    }
-  ],
+  "strengths": ["specific strength with evidence"],
+  "improvements": ["specific actionable improvement"],
+  "question_scores": [{"id":number,"score":number,"feedback":"string","keyword_hits":["string"]}],
   "integrity_note": "string"
 }`;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS: compute supplementary analytics from raw answers client-side
-// These enrich the display without extra API calls.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Estimate words per minute as a proxy for verbal fluency */
-function estimateWPM(answers: any[], durationSeconds: number): number {
-  if (!durationSeconds) return 0;
-  const totalWords = answers.reduce((sum, a) => sum + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0);
-  return Math.round((totalWords / durationSeconds) * 60);
+// ─── Client-side analytics ────────────────────────────────────────────────────
+function estimateWPM(answers: any[], sec: number) {
+  if (!sec) return 0;
+  const words = answers.reduce((s, a) => s + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0);
+  return Math.round((words / sec) * 60);
 }
-
-/** Count filler-word occurrences across all answers */
-function countFillerWords(answers: any[]): number {
-  const fillers = /\b(um|uh|like|you know|basically|literally|actually|kind of|sort of|i mean|right\?|so yeah|just|stuff|things)\b/gi;
-  return answers.reduce((sum, a) => {
-    const matches = (a.answer || "").match(fillers);
-    return sum + (matches ? matches.length : 0);
-  }, 0);
+function countFillers(answers: any[]) {
+  const re = /\b(um|uh|like|you know|basically|literally|actually|kind of|sort of|i mean|right\?|so yeah|just)\b/gi;
+  return answers.reduce((s, a) => { const m = (a.answer || "").match(re); return s + (m ? m.length : 0); }, 0);
 }
-
-/** Detect STAR method usage (Situation/Task/Action/Result keywords) */
-function detectSTARUsage(answers: any[]): number {
-  const starSignals = /\b(situation|context|background|task|responsible|challenge|action|decided|implemented|result|outcome|achieved|improved|increased|reduced|led to)\b/gi;
-  const total = answers.reduce((sum, a) => {
-    const matches = (a.answer || "").match(starSignals);
-    return sum + (matches ? new Set(matches.map((m: string) => m.toLowerCase())).size : 0);
-  }, 0);
-  // return as a % of ideal (20 unique STAR signals = 100%)
+function starScore(answers: any[]) {
+  const re = /\b(situation|context|task|responsible|challenge|action|decided|implemented|result|outcome|achieved|improved|increased|reduced)\b/gi;
+  const total = answers.reduce((s, a) => { const m = (a.answer || "").match(re); return s + (m ? new Set(m.map((x: string) => x.toLowerCase())).size : 0); }, 0);
   return Math.min(100, Math.round((total / 20) * 100));
 }
-
-/** Average answer length in words */
-function avgAnswerLength(answers: any[]): number {
+function avgWords(answers: any[]) {
   if (!answers.length) return 0;
-  const total = answers.reduce((sum, a) => sum + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0);
-  return Math.round(total / answers.length);
+  return Math.round(answers.reduce((s, a) => s + (a.answer?.split(/\s+/).filter(Boolean).length || 0), 0) / answers.length);
+}
+function substantiveRate(answers: any[]) {
+  return answers.length ? Math.round(answers.filter(a => (a.answer?.split(/\s+/).filter(Boolean).length || 0) >= 30).length / answers.length * 100) : 0;
 }
 
-/** Score confidence: % of answers that are ≥ 30 words (substantive) */
-function substantiveAnswerRate(answers: any[]): number {
-  const substantive = answers.filter(a => (a.answer?.split(/\s+/).filter(Boolean).length || 0) >= 30).length;
-  return answers.length ? Math.round((substantive / answers.length) * 100) : 0;
+// ─── Normalize AI response (handle both camelCase + snake_case) ──────────────
+function normalize(raw: any): AnalysisResult {
+  return {
+    overall_score: raw.overall_score ?? raw.overallScore ?? 0,
+    overall_grade: raw.overall_grade ?? raw.overallGrade ?? "N/A",
+    summary: raw.summary ?? "",
+    hire_recommendation: raw.hire_recommendation ?? raw.hireRecommendation ?? "N/A",
+    strengths: raw.strengths ?? [],
+    improvements: raw.improvements ?? [],
+    question_scores: (raw.question_scores ?? raw.questionScores ?? []).map((q: any) => ({
+      id: q.id,
+      score: Math.max(0, Math.min(10, q.score ?? 0)),
+      feedback: q.feedback ?? "",
+      keyword_hits: q.keyword_hits ?? q.keywordHits ?? [],
+    })),
+    integrity_note: raw.integrity_note ?? raw.integrityNote ?? "",
+  };
 }
 
-/** Build rich user message for the AI — includes per-answer word counts and filler flags */
-function buildUserMessage(plan: any, answers: any[], violations: any[], duration: number): string {
-  const fillers = /\b(um|uh|like|you know|basically|literally|actually|kind of|sort of|i mean)\b/gi;
+// ─── Colors ───────────────────────────────────────────────────────────────────
+const C = {
+  bg: "#F8F7F4",
+  surface: "#FFFFFF",
+  border: "#E8E4DE",
+  text: "#1C1917",
+  textMid: "#78716C",
+  textLight: "#A8A29E",
+  accent: "#D89B26",
+  accentLight: "rgba(216,155,38,0.07)",
+  accentBorder: "rgba(216,155,38,0.2)",
+  gold: "#B45309",
+  goldLight: "rgba(180,83,9,0.07)",
+  error: "#991B1B",
+  errorBg: "rgba(153,27,27,0.06)",
+};
 
-  const qaText = answers.map((a: any, i: number) => {
-    const wordCount = a.answer?.split(/\s+/).filter(Boolean).length || 0;
-    const fillerMatches = (a.answer || "").match(fillers) || [];
-    const hasSTAR = /\b(situation|task|action|result|outcome|achieved)\b/i.test(a.answer || "");
-    return [
-      `Q${i + 1} [type: ${a.questionType || "general"}, words: ${wordCount}, fillers: ${fillerMatches.length}, STAR: ${hasSTAR ? "yes" : "no"}]:`,
-      `Question: ${a.question}`,
-      `Answer: ${a.answer || "(no answer given)"}`,
-    ].join("\n");
-  }).join("\n\n");
-
-  return [
-    `Role: ${plan.role} (${plan.level})`,
-    `Focus areas: ${(plan.focus_areas || []).join(", ")}`,
-    `Interview duration: ${Math.floor(duration / 60)}m ${duration % 60}s`,
-    `Tab violations: ${violations.length}`,
-    `Total questions: ${answers.length}`,
-    ``,
-    `--- ANSWERS ---`,
-    qaText,
-    ``,
-    `--- INTEGRITY ---`,
-    violations.length > 0
-      ? `Violations occurred at: ${violations.map((v: any) => `Q${v.qNum} (${v.time})`).join(", ")}`
-      : `No integrity violations detected.`,
-  ].join("\n");
+// ─── Score color helper ───────────────────────────────────────────────────────
+function scoreColor(s: number, max = 100) {
+  const pct = max === 10 ? s * 10 : s;
+  return pct >= 75 ? "#D89B26" : pct >= 50 ? "#B45309" : "#991B1B";
+}
+function scoreBg(s: number, max = 100) {
+  const pct = max === 10 ? s * 10 : s;
+  return pct >= 75 ? "rgba(45,90,39,0.07)" : pct >= 50 ? "rgba(180,83,9,0.07)" : "rgba(153,27,27,0.06)";
+}
+function scoreBar(s: number) {
+  return s >= 7 ? "#D89B26" : s >= 5 ? "#B45309" : "#991B1B";
 }
 
+// ─── Grade badge gradient ─────────────────────────────────────────────────────
+function gradeGradient(score: number) {
+  if (score >= 85) return "linear-gradient(135deg, #166534, #15803D)";
+  if (score >= 70) return "linear-gradient(135deg, #14532D, #D89B26)";
+  if (score >= 55) return "linear-gradient(135deg, #92400E, #B45309)";
+  return "linear-gradient(135deg, #7F1D1D, #991B1B)";
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+function StatCard({ label, value, note, alert }: { label: string; value: string; note?: string; alert?: boolean }) {
+  return (
+    <div style={{
+      background: alert ? "rgba(180,83,9,0.05)" : C.surface,
+      border: `1.5px solid ${alert ? "rgba(180,83,9,0.3)" : C.border}`,
+      borderRadius: 12, padding: "16px 18px", textAlign: "center",
+    }}>
+      <p style={{ fontSize: 11, color: C.textLight, marginBottom: 6, letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 500 }}>{label}</p>
+      <p style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: "'Playfair Display', serif" }}>{value}</p>
+      {note && <p style={{ fontSize: 10, color: C.textMid, marginTop: 4 }}>{note}</p>}
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function InterviewAnalysis() {
   const navigate = useNavigate();
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -154,23 +158,22 @@ export default function InterviewAnalysis() {
   const [answers, setAnswers] = useState<any[]>([]);
   const [violations, setViolations] = useState<any[]>([]);
   const [duration, setDuration] = useState(0);
-
-  // ── Supplementary client-side analytics (no extra API call) ──
   const [wpm, setWpm] = useState(0);
-  const [fillerCount, setFillerCount] = useState(0);
-  const [starScore, setStarScore] = useState(0);
-  const [avgWords, setAvgWords] = useState(0);
-  const [substantiveRate, setSubstantiveRate] = useState(0);
+  const [fillers, setFillers] = useState(0);
+  const [star, setStar] = useState(0);
+  const [avgW, setAvgW] = useState(0);
+  const [subRate, setSubRate] = useState(0);
 
   useEffect(() => {
     const planRaw = sessionStorage.getItem("iv_plan");
     const answersRaw = sessionStorage.getItem("iv_answers");
     const violationsRaw = sessionStorage.getItem("iv_violations");
     const durationRaw = sessionStorage.getItem("iv_duration");
+    const existingAnalysis = sessionStorage.getItem("iv_analysis");
 
-    if (!planRaw || !answersRaw) { navigate("/ai-interview"); return; }
+    if (!answersRaw) { navigate("/ai-interview"); return; }
 
-    const plan = JSON.parse(planRaw);
+    const plan = planRaw ? JSON.parse(planRaw) : { role: "Interview", level: "", focus_areas: [] };
     const ans = JSON.parse(answersRaw);
     const viols = violationsRaw ? JSON.parse(violationsRaw) : [];
     const dur = Number(durationRaw) || 0;
@@ -178,52 +181,64 @@ export default function InterviewAnalysis() {
     setAnswers(ans);
     setViolations(viols);
     setDuration(dur);
-
-    // ── Compute client-side analytics immediately ──
     setWpm(estimateWPM(ans, dur));
-    setFillerCount(countFillerWords(ans));
-    setStarScore(detectSTARUsage(ans));
-    setAvgWords(avgAnswerLength(ans));
-    setSubstantiveRate(substantiveAnswerRate(ans));
+    setFillers(countFillers(ans));
+    setStar(starScore(ans));
+    setAvgW(avgWords(ans));
+    setSubRate(substantiveRate(ans));
 
-    // ── Call AI with enriched prompt and message ──
-    const userMsg = buildUserMessage(plan, ans, viols, dur);
-
-    callInterviewAI({
-      action: "analyze",
-      systemPrompt: ANALYSIS_PROMPT,
-      userMessage: userMsg,
-      maxTokens: 2500, // increased for richer per-question feedback
-    })
-      .then((raw) => {
-        const parsed = parseAIJson(raw);
-
-        // ── Safety clamp: ensure scores stay in valid range ──
+    // Use pre-computed analysis if available
+    if (existingAnalysis) {
+      try {
+        const parsed = parseAIJson ? parseAIJson(existingAnalysis) : JSON.parse(existingAnalysis);
         if (parsed) {
-          parsed.overall_score = Math.max(0, Math.min(100, parsed.overall_score));
-          if (parsed.question_scores) {
-            parsed.question_scores = parsed.question_scores.map((qs: QuestionScore) => ({
-              ...qs,
-              score: Math.max(0, Math.min(10, qs.score)),
-            }));
-          }
-          // ── Sync hire_recommendation with score in case AI drifts ──
-          if (parsed.overall_score >= 85 && parsed.hire_recommendation !== "Strong Hire") {
-            parsed.hire_recommendation = "Strong Hire";
-          } else if (parsed.overall_score >= 70 && parsed.overall_score < 85 && parsed.hire_recommendation === "Strong Hire") {
-            parsed.hire_recommendation = "Hire";
-          } else if (parsed.overall_score < 55 && parsed.hire_recommendation === "Strong Hire") {
-            parsed.hire_recommendation = "No Hire";
-          }
+          setResult(normalize(parsed));
+          setLoading(false);
+          sessionStorage.removeItem("iv_plan");
+          sessionStorage.removeItem("iv_answers");
+          sessionStorage.removeItem("iv_violations");
+          sessionStorage.removeItem("iv_duration");
+          sessionStorage.removeItem("iv_analysis");
+          return;
         }
+      } catch (e) { console.error("Existing analysis parse failed, re-running:", e); }
+    }
 
-        setResult(parsed);
+    // Build user message for fresh analysis
+    const qaText = ans.map((a: any, i: number) => {
+      const wc = a.answer?.split(/\s+/).filter(Boolean).length || 0;
+      return `Q${i + 1} [type: ${a.questionType || "general"}, words: ${wc}]:\nQuestion: ${a.question}\nAnswer: ${a.answer || "(no answer given)"}`;
+    }).join("\n\n");
+
+    const userMsg = [
+      `Role: ${plan.role} (${plan.level})`,
+      `Interview duration: ${Math.floor(dur / 60)}m ${dur % 60}s`,
+      `Tab violations: ${viols.length}`,
+      ``,
+      `--- ANSWERS ---`,
+      qaText,
+      ``,
+      `--- INTEGRITY ---`,
+      viols.length > 0
+        ? `Violations at: ${viols.map((v: any) => `Q${v.qNum} (${v.time})`).join(", ")}`
+        : "No violations.",
+    ].join("\n");
+
+    callInterviewAI({ action: "analyze", systemPrompt: ANALYSIS_PROMPT, userMessage: userMsg, maxTokens: 2500 })
+      .then(raw => {
+        const parsed = parseAIJson ? parseAIJson(raw) : JSON.parse(raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+        setResult(normalize(parsed));
         setLoading(false);
+        sessionStorage.removeItem("iv_plan");
+        sessionStorage.removeItem("iv_answers");
+        sessionStorage.removeItem("iv_violations");
+        sessionStorage.removeItem("iv_duration");
+        sessionStorage.removeItem("iv_analysis");
       })
       .catch(() => {
         setResult({
           overall_score: 0, overall_grade: "N/A",
-          summary: "Analysis failed. Please try again.",
+          summary: "Analysis could not be generated. Please try again.",
           hire_recommendation: "N/A", strengths: [], improvements: [],
           question_scores: [], integrity_note: "",
         });
@@ -231,229 +246,354 @@ export default function InterviewAnalysis() {
       });
   }, [navigate]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-            <p className="text-lg font-medium text-foreground">Generating your performance report...</p>
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap'); @keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
+      <Navbar />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: "50%",
+            background: C.accentLight, border: `2px solid ${C.accentBorder}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 20px",
+          }}>
+            <Loader2 size={28} style={{ color: C.accent, animation: "spin 1s linear infinite" }} />
           </div>
+          <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 8 }}>
+            Analysing Your Performance
+          </p>
+          <p style={{ fontSize: 13, color: C.textMid }}>Evaluating across 8 professional dimensions…</p>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   if (!result) return null;
 
-  const scoreBg = result.overall_score >= 75 ? "from-green-500 to-emerald-600" : result.overall_score >= 50 ? "from-amber-500 to-orange-600" : "from-red-500 to-rose-600";
-  const scoreBarColor = (s: number) => s >= 7 ? "bg-green-500" : s >= 5 ? "bg-amber-500" : "bg-red-500";
+  const score = result.overall_score;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+        .fade-up { animation: slideUp 0.5s ease forwards; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #D4CFC8; border-radius: 3px; }
+      `}</style>
       <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-10 max-w-4xl space-y-8">
-        {/* HERO BANNER */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className={`bg-gradient-to-br ${scoreBg} border-0 text-white overflow-hidden`}>
-            <CardContent className="p-8">
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                <motion.div
-                  className="text-6xl md:text-7xl font-display font-bold"
-                  initial={{ scale: 0 }} animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                >
-                  {result.overall_score}%
-                </motion.div>
-                <div className="flex-1 text-center md:text-left">
-                  <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-3">
-                    <span className="rounded-full bg-white/20 px-4 py-1 text-sm font-bold">{result.overall_grade}</span>
-                    <span className="rounded-full bg-white/20 px-4 py-1 text-sm font-bold">{result.hire_recommendation}</span>
-                  </div>
-                  <p className="text-white/90 text-sm">{result.summary}</p>
-                  <div className="flex gap-4 mt-3 text-xs text-white/70">
-                    <span>⏱ {Math.floor(duration / 60)}m {duration % 60}s</span>
-                    <span>⚠️ {violations.length} violation{violations.length !== 1 ? "s" : ""}</span>
-                  </div>
+
+      <main style={{ flex: 1, maxWidth: 860, margin: "0 auto", padding: "40px 20px 80px", width: "100%" }}>
+
+        {/* ── Hero Banner ── */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+          <div style={{
+            background: gradeGradient(score),
+            borderRadius: 20, padding: "32px 36px",
+            color: "#fff", overflow: "hidden", position: "relative",
+          }}>
+            {/* Decorative circles */}
+            <div style={{ position: "absolute", top: -40, right: -40, width: 180, height: 180, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+            <div style={{ position: "absolute", bottom: -20, right: 60, width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+
+            <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 28, position: "relative" }}>
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 180, delay: 0.1 }}>
+                <div style={{
+                  background: "rgba(255,255,255,0.15)",
+                  borderRadius: 16, padding: "20px 28px", textAlign: "center",
+                  backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)",
+                }}>
+                  <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 48, fontWeight: 700, lineHeight: 1 }}>{score}%</p>
+                  <p style={{ fontSize: 11, opacity: 0.8, letterSpacing: 2, textTransform: "uppercase", marginTop: 4 }}>Overall</p>
+                </div>
+              </motion.div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <span style={{
+                    background: "rgba(255,255,255,0.2)", borderRadius: 100,
+                    padding: "4px 14px", fontSize: 12, fontWeight: 700,
+                    border: "1px solid rgba(255,255,255,0.3)", letterSpacing: 1,
+                  }}>
+                    Grade: {result.overall_grade}
+                  </span>
+                  <span style={{
+                    background: "rgba(255,255,255,0.2)", borderRadius: 100,
+                    padding: "4px 14px", fontSize: 12, fontWeight: 700,
+                    border: "1px solid rgba(255,255,255,0.3)", letterSpacing: 0.5,
+                  }}>
+                    {result.hire_recommendation}
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, opacity: 0.9, lineHeight: 1.65, maxWidth: 420 }}>{result.summary}</p>
+                <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 11, opacity: 0.7 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Clock size={11} /> {Math.floor(duration / 60)}m {duration % 60}s
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <AlertTriangle size={11} /> {violations.length} violation{violations.length !== 1 ? "s" : ""}
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Award size={11} /> {answers.length}/8 questions
+                  </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </motion.div>
 
-        {/* STAT CARDS — original 4 + 4 new analytics cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Overall Score", value: `${result.overall_score}%` },
-            { label: "Grade", value: result.overall_grade },
-            { label: "Questions Done", value: `${answers.length}/8` },
-            { label: "Tab Violations", value: String(violations.length), alert: violations.length > 0 },
-          ].map((s) => (
-            <Card key={s.label} className={s.alert ? "border-destructive/30 bg-destructive/5" : ""}>
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
-                <p className="text-2xl font-display font-bold text-foreground">{s.value}</p>
-              </CardContent>
-            </Card>
-          ))}
+        {/* ── Core Stats ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+          <StatCard label="Score" value={`${score}%`} />
+          <StatCard label="Grade" value={result.overall_grade} />
+          <StatCard label="Questions" value={`${answers.length}/8`} />
+          <StatCard label="Violations" value={String(violations.length)} alert={violations.length > 0} />
         </div>
 
-        {/* COMMUNICATION ANALYTICS — extra row of 4 smart metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: "Speaking Pace",
-              value: wpm > 0 ? `${wpm} WPM` : "N/A",
-              note: wpm >= 120 && wpm <= 160 ? "✓ Ideal pace" : wpm > 160 ? "↑ Too fast" : wpm > 0 ? "↓ Too slow" : "",
-              alert: wpm > 180 || (wpm > 0 && wpm < 80),
-            },
-            {
-              label: "Filler Words",
-              value: String(fillerCount),
-              note: fillerCount === 0 ? "✓ None detected" : fillerCount <= 5 ? "Acceptable" : "Too many",
-              alert: fillerCount > 5,
-            },
-            {
-              label: "STAR Usage",
-              value: `${starScore}%`,
-              note: starScore >= 60 ? "✓ Strong structure" : starScore >= 30 ? "Partial structure" : "Needs structure",
-              alert: starScore < 30,
-            },
-            {
-              label: "Avg Answer Length",
-              value: `${avgWords} words`,
-              note: avgWords >= 50 ? "✓ Detailed" : avgWords >= 25 ? "Adequate" : "Too brief",
-              alert: avgWords < 25,
-            },
-          ].map((s) => (
-            <Card key={s.label} className={s.alert ? "border-amber-300 bg-amber-50/50" : "border-blue-100 bg-blue-50/30"}>
-              <CardContent className="p-4 text-center">
-                <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
-                <p className="text-2xl font-display font-bold text-foreground">{s.value}</p>
-                {s.note && <p className="text-xs mt-1 text-muted-foreground">{s.note}</p>}
-              </CardContent>
-            </Card>
-          ))}
+        {/* ── Communication Analytics ── */}
+        <div style={{ marginBottom: 24 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: C.textLight, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>
+            Communication Analytics
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <StatCard
+              label="Speaking Pace"
+              value={wpm > 0 ? `${wpm} WPM` : "N/A"}
+              note={wpm >= 120 && wpm <= 160 ? "✓ Ideal pace" : wpm > 160 ? "↑ A bit fast" : wpm > 0 ? "↓ A bit slow" : ""}
+              alert={wpm > 180 || (wpm > 0 && wpm < 80)}
+            />
+            <StatCard
+              label="Filler Words"
+              value={String(fillers)}
+              note={fillers === 0 ? "✓ None detected" : fillers <= 5 ? "Acceptable" : "Reduce fillers"}
+              alert={fillers > 5}
+            />
+            <StatCard
+              label="STAR Usage"
+              value={`${star}%`}
+              note={star >= 60 ? "✓ Strong structure" : star >= 30 ? "Partial structure" : "Use STAR method"}
+              alert={star < 30}
+            />
+            <StatCard
+              label="Avg Length"
+              value={`${avgW}w`}
+              note={avgW >= 50 ? "✓ Detailed" : avgW >= 25 ? "Adequate" : "Too brief"}
+              alert={avgW < 25}
+            />
+          </div>
         </div>
 
-        {/* SUBSTANTIVE ANSWER RATE — thin progress bar card */}
-        <Card className="border-primary/20">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-foreground">Answer Depth Rate</p>
-              <span className="text-sm font-bold text-foreground">{substantiveRate}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${substantiveRate >= 70 ? "bg-green-500" : substantiveRate >= 40 ? "bg-amber-500" : "bg-red-400"}`}
-                style={{ width: `${substantiveRate}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {substantiveRate >= 70
-                ? "Most answers were detailed and substantive (30+ words)."
-                : substantiveRate >= 40
-                ? "About half your answers had sufficient depth. Aim for more detail."
-                : "Most answers were too short. Interviewers expect 50–100 word responses minimum."}
+        {/* ── Answer Depth ── */}
+        <div style={{
+          background: C.surface, border: `1.5px solid ${C.border}`,
+          borderRadius: 12, padding: "16px 20px", marginBottom: 24,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
+              <Mic size={14} style={{ color: C.textMid }} />
+              Answer Depth Rate
             </p>
-          </CardContent>
-        </Card>
-
-        {/* STRENGTHS & IMPROVEMENTS */}
-        <div className="grid md:grid-cols-2 gap-4">
-          <Card className="border-green-200 bg-green-50/50">
-            <CardHeader><CardTitle className="text-base text-green-800">💪 Strengths</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {result.strengths.map((s, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm text-green-700">
-                  <span>✓</span><span>{s}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-          <Card className="border-amber-200 bg-amber-50/50">
-            <CardHeader><CardTitle className="text-base text-amber-800">📈 Areas to Improve</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {result.improvements.map((s, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm text-amber-700">
-                  <span>→</span><span>{s}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+            <span style={{ fontSize: 14, fontWeight: 700, color: scoreColor(subRate) }}>{subRate}%</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 100, background: C.border, overflow: "hidden" }}>
+            <motion.div
+              initial={{ width: 0 }} animate={{ width: `${subRate}%` }} transition={{ duration: 0.8, delay: 0.2 }}
+              style={{ height: "100%", borderRadius: 100, background: scoreColor(subRate) }}
+            />
+          </div>
+          <p style={{ fontSize: 11, color: C.textMid, marginTop: 6 }}>
+            {subRate >= 70
+              ? "Most answers were detailed and substantive (30+ words)."
+              : subRate >= 40
+              ? "About half your answers had sufficient depth. Aim for more detail."
+              : "Most answers were too short. Interviewers expect 50–100 word responses."}
+          </p>
         </div>
 
-        {/* QUESTION BREAKDOWN */}
-        <div>
-          <h2 className="font-display text-xl font-bold text-foreground mb-4">Question Breakdown</h2>
-          <div className="space-y-4">
+        {/* ── Strengths & Improvements ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+          <div style={{
+            background: C.accentLight, border: `1.5px solid ${C.accentBorder}`,
+            borderRadius: 14, padding: "20px 22px",
+          }}>
+            <p style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 600, color: C.accent, marginBottom: 14 }}>
+              <CheckCircle2 size={16} /> Strengths
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {result.strengths.map((s, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: C.text }}>
+                  <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                  <span style={{ lineHeight: 1.6 }}>{s}</span>
+                </div>
+              ))}
+              {result.strengths.length === 0 && (
+                <p style={{ fontSize: 13, color: C.textMid, fontStyle: "italic" }}>No strengths recorded.</p>
+              )}
+            </div>
+          </div>
+          <div style={{
+            background: C.goldLight, border: "1.5px solid rgba(180,83,9,0.2)",
+            borderRadius: 14, padding: "20px 22px",
+          }}>
+            <p style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 600, color: C.gold, marginBottom: 14 }}>
+              <TrendingUp size={16} /> Areas to Improve
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {result.improvements.map((s, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: C.text }}>
+                  <span style={{ color: C.gold, fontWeight: 700, flexShrink: 0 }}>→</span>
+                  <span style={{ lineHeight: 1.6 }}>{s}</span>
+                </div>
+              ))}
+              {result.improvements.length === 0 && (
+                <p style={{ fontSize: 13, color: C.textMid, fontStyle: "italic" }}>No improvements noted.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Question Breakdown ── */}
+        <div style={{ marginBottom: 24 }}>
+          <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 16 }}>
+            Question Breakdown
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {result.question_scores.map((qs, i) => {
               const a = answers[i];
-              const wordCount = a?.answer?.split(/\s+/).filter(Boolean).length || 0;
+              const wc = a?.answer?.split(/\s+/).filter(Boolean).length || 0;
               return (
-                <Card key={qs.id}>
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{i + 1}</span>
-                      <p className="text-sm font-medium text-foreground flex-1">{a?.question}</p>
-                      {/* ── Word count badge — shows depth at a glance ── */}
-                      <span className="shrink-0 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        {wordCount}w
+                <motion.div key={qs.id}
+                  initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.06 }}
+                  style={{
+                    background: C.surface, border: `1.5px solid ${C.border}`,
+                    borderRadius: 14, padding: "20px 22px",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                      background: C.accentLight, border: `1.5px solid ${C.accentBorder}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 700, color: C.accent,
+                    }}>
+                      {i + 1}
+                    </div>
+                    <p style={{ flex: 1, fontSize: 13, fontWeight: 500, color: C.text, lineHeight: 1.5 }}>
+                      {a?.question ?? `Question ${i + 1}`}
+                    </p>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, color: C.textLight, background: C.bg, borderRadius: 100, padding: "2px 8px", border: `1px solid ${C.border}` }}>
+                        {wc}w
+                      </span>
+                      <span style={{
+                        fontSize: 13, fontWeight: 700,
+                        color: scoreColor(qs.score, 10),
+                        background: scoreBg(qs.score, 10),
+                        borderRadius: 8, padding: "2px 10px",
+                      }}>
+                        {qs.score}/10
                       </span>
                     </div>
-                    {a?.answer && (
-                      <div className="rounded-lg bg-muted p-3">
-                        <p className="text-xs text-muted-foreground italic">"{a.answer}"</p>
-                      </div>
-                    )}
-                    <p className="text-sm text-foreground">{qs.feedback}</p>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                        <div className={`h-full rounded-full ${scoreBarColor(qs.score)}`} style={{ width: `${qs.score * 10}%` }} />
-                      </div>
-                      <span className="text-sm font-bold text-foreground">{qs.score}/10</span>
+                  </div>
+
+                  {a?.answer && (
+                    <div style={{
+                      background: C.bg, borderRadius: 8, padding: "10px 14px",
+                      marginBottom: 10, borderLeft: `3px solid ${C.border}`,
+                    }}>
+                      <p style={{ fontSize: 12, color: C.textMid, fontStyle: "italic", lineHeight: 1.6 }}>
+                        "{a.answer}"
+                      </p>
                     </div>
-                    {qs.keyword_hits?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {qs.keyword_hits.map((kw, j) => (
-                          <Badge key={j} variant="secondary" className="text-xs">{kw}</Badge>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  )}
+
+                  <p style={{ fontSize: 13, color: C.text, lineHeight: 1.65, marginBottom: 12 }}>{qs.feedback}</p>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: qs.keyword_hits?.length ? 10 : 0 }}>
+                    <div style={{ flex: 1, height: 5, borderRadius: 100, background: C.border, overflow: "hidden" }}>
+                      <motion.div
+                        initial={{ width: 0 }} animate={{ width: `${qs.score * 10}%` }}
+                        transition={{ duration: 0.6, delay: i * 0.06 + 0.2 }}
+                        style={{ height: "100%", borderRadius: 100, background: scoreBar(qs.score) }}
+                      />
+                    </div>
+                  </div>
+
+                  {qs.keyword_hits && qs.keyword_hits.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {qs.keyword_hits.map((kw, j) => (
+                        <span key={j} style={{
+                          fontSize: 10, padding: "3px 10px", borderRadius: 100,
+                          background: C.accentLight, color: C.accent,
+                          border: `1px solid ${C.accentBorder}`, fontWeight: 500, letterSpacing: 0.5,
+                        }}>
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
               );
             })}
           </div>
         </div>
 
-        {/* INTEGRITY REPORT */}
+        {/* ── Integrity Report ── */}
         {violations.length > 0 && (
-          <Card className="border-destructive/50">
-            <CardHeader><CardTitle className="text-base text-destructive">⚠️ Integrity Report</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm text-muted-foreground">{violations.length} tab violation{violations.length !== 1 ? "s" : ""} detected:</p>
-              <ul className="space-y-1">
-                {violations.map((v: any, i: number) => (
-                  <li key={i} className="text-sm text-foreground">Question {v.qNum} at {v.time}</li>
-                ))}
-              </ul>
-              {result.integrity_note && <p className="text-sm text-muted-foreground italic mt-2">{result.integrity_note}</p>}
-            </CardContent>
-          </Card>
+          <div style={{
+            background: C.errorBg, border: "1.5px solid rgba(153,27,27,0.25)",
+            borderRadius: 14, padding: "20px 22px", marginBottom: 24,
+          }}>
+            <p style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 600, color: C.error, marginBottom: 12 }}>
+              <AlertTriangle size={16} /> Integrity Report
+            </p>
+            <p style={{ fontSize: 13, color: C.textMid, marginBottom: 8 }}>
+              {violations.length} tab violation{violations.length !== 1 ? "s" : ""} detected:
+            </p>
+            <ul style={{ margin: 0, padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 4 }}>
+              {violations.map((v: any, i: number) => (
+                <li key={i} style={{ fontSize: 13, color: C.text }}>
+                  Question {v.qNum} at {v.time}
+                </li>
+              ))}
+            </ul>
+            {result.integrity_note && (
+              <p style={{ fontSize: 12, color: C.textMid, marginTop: 10, fontStyle: "italic", lineHeight: 1.65 }}>
+                {result.integrity_note}
+              </p>
+            )}
+          </div>
         )}
 
-        {/* ACTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button onClick={() => navigate("/ai-interview")} variant="hero" className="flex-1">
-            <RotateCcw className="h-4 w-4" /> Try Again
-          </Button>
-          <Button onClick={() => navigate("/dashboard")} variant="outline" className="flex-1">
-            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-          </Button>
+        {/* ── Actions ── */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => navigate("/ai-interview")}
+            style={{
+              flex: 1, minWidth: 180, height: 48, borderRadius: 10,
+              background: C.accent, color: "#fff", border: "none",
+              fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              letterSpacing: 1,
+            }}>
+            <RotateCcw size={15} /> Try Again
+          </button>
+          <button
+            onClick={() => navigate("/dashboard")}
+            style={{
+              flex: 1, minWidth: 180, height: 48, borderRadius: 10,
+              background: C.surface, color: C.text,
+              border: `1.5px solid ${C.border}`,
+              fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}>
+            <ArrowLeft size={15} /> Back to Dashboard
+          </button>
         </div>
       </main>
+
       <Footer />
     </div>
   );
