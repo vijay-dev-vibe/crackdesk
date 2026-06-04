@@ -448,8 +448,8 @@ export default function Dashboard() {
             <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
               <div style={CARD}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
-                    <s.icon size={13} style={{ color: GOLD }} /> {s.label}
+                  <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                     {s.label}
                   </span>
                   <Info size={13} style={{ color: "rgba(255,255,255,0.2)" }} />
                 </div>
@@ -479,7 +479,7 @@ export default function Dashboard() {
             <div style={{ ...CARD, opacity: hasProgressTracking ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                 <div>
-                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>📈 Score Overview</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}> Score Overview</p>
                   <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, color: "#fff", margin: 0 }}>
                     {stats.avgScore}%
                   </p>
@@ -509,7 +509,7 @@ export default function Dashboard() {
             <div style={{ ...CARD, opacity: hasWeeklyActivity ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <div>
-                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>🎯 Weekly Activity</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}> Weekly Activity</p>
                   <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, color: "#fff", margin: 0 }}>
                     {stats.testsTaken}
                   </p>
@@ -555,7 +555,7 @@ export default function Dashboard() {
             style={{ position: "relative" }}>
             <div style={{ ...CARD, opacity: hasScoreDistribution ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>🏆 Score Distribution</p>
+                <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>Score Distribution</p>
                 <button style={{
                   background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
                   color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "4px 10px", fontSize: 11, cursor: "pointer"
@@ -580,7 +580,7 @@ export default function Dashboard() {
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
             <div style={CARD}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600 }}>📋 Recent Tests</p>
+                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600 }}>        Recent Tests</p>
                 <Link to="/test-history" style={{ color: GOLD, fontSize: 12, textDecoration: "none", fontWeight: 600 }}>See All</Link>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr", gap: "0 8px", marginBottom: 8 }}>

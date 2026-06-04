@@ -112,6 +112,10 @@ export default function MockTest() {
   const [startTime, setStartTime] = useState(0);
   const [timeTaken, setTimeTaken] = useState(0);
   const warnedRef = useRef(false);
+  const finalScoreRef = useRef(0);       
+  const finalPercentageRef = useRef(0); 
+  const finalTimeTakenRef = useRef(0);   
+  const finalAnswersRef = useRef<(number | null)[]>([]); 
 
   const {
     subscription,
@@ -121,6 +125,28 @@ export default function MockTest() {
     incrementMockTestUsage,
     mockTestsRemaining,
   } = useSubscription();
+
+      // ── Fetch user name for certificate ──────────────────────────
+    const [userName, setUserName] = useState("MapReducer Student");
+
+    useEffect(() => {
+      const fetchName = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data: prof } = await (supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", session.user.id)
+          .maybeSingle() as any);
+        const name =
+          prof?.full_name ||
+          session.user.user_metadata?.full_name ||
+          session.user.email?.split("@")[0] ||
+          "MapReducer Student";
+        setUserName(name);
+      };
+      fetchName();
+    }, []);
 
   // ── Generate handler ────────────────────────────────────────────────────────
   const handleGenerate = async () => {
@@ -169,40 +195,44 @@ export default function MockTest() {
   };
 
   // ── Finish test + save to Supabase ──────────────────────────────────────────
-  const finishTest = useCallback(async () => {
-    const elapsed = Math.round((Date.now() - startTime) / 1000);
-    setTimeTaken(elapsed);
-    setPhase("results");
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) return;
-      const finalScore = answers.reduce(
-        (acc, a, i) => acc + (a === questions[i]?.correct ? 1 : 0),
-        0
+      const finishTest = useCallback(async () => {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      setTimeTaken(elapsed);
+      setPhase("results");
+
+      // ── snapshot final values into refs ──────────────────────
+      finalTimeTakenRef.current = elapsed;
+      finalAnswersRef.current = answers;
+      const fs = answers.reduce(
+        (acc, a, i) => acc + (a === questions[i]?.correct ? 1 : 0), 0
       );
-      const title =
-        jd.trim().slice(0, 80) + (jd.length > 80 ? "…" : "");
-      const { error } = await supabase.from("test_results").insert({
-        user_id: session.user.id,
-        test_title: title,
-        sector: "AI Mock Test",
-        level:
-          finalScore / questions.length >= 0.8
-            ? "Advanced"
-            : finalScore / questions.length >= 0.5
-            ? "Intermediate"
+      finalScoreRef.current = fs;
+      finalPercentageRef.current = questions.length
+        ? Math.round((fs / questions.length) * 100)
+        : 0;
+      // ─────────────────────────────────────────────────────────
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const title = jd.trim().slice(0, 80) + (jd.length > 80 ? "…" : "");
+        const { error } = await supabase.from("test_results").insert({
+          user_id: session.user.id,
+          test_title: title,
+          sector: "AI Mock Test",
+          level:
+            fs / questions.length >= 0.8 ? "Advanced"
+            : fs / questions.length >= 0.5 ? "Intermediate"
             : "Beginner",
-        score: finalScore,
-        total_questions: questions.length,
-        time_taken: elapsed,
-      });
-      if (error) console.error("[MockTest] Failed to save:", error.message);
-    } catch (e: any) {
-      console.error("[MockTest] Save error:", e.message);
-    }
-  }, [startTime, answers, questions, jd]);
+          score: fs,
+          total_questions: questions.length,
+          time_taken: elapsed,
+        });
+        if (error) console.error("[MockTest] Failed to save:", error.message);
+      } catch (e: any) {
+        console.error("[MockTest] Save error:", e.message);
+      }
+    }, [startTime, answers, questions, jd]);
 
   // ── Timer ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -261,6 +291,7 @@ export default function MockTest() {
   const strongAreas = () =>
     skillBreakdown()
       .filter((s) => s.pct >= 70)
+      .sort((a, b) => b.pct - a.pct)
       .map((s) => s.skill);
   const weakAreas = () =>
     skillBreakdown()
@@ -274,28 +305,44 @@ export default function MockTest() {
   const formatTimeTaken = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
 
   // ── PDF certificate ──────────────────────────────────────────────────────────
-  const downloadPDF = () => {
-    if (!planLimits?.features.certificateDownload) {
-      toast.error("Certificate downloads require Pro or Premium plan", {
-        action: {
-          label: "Upgrade",
-          onClick: () => (window.location.href = "/pricing"),
-        },
-      });
-      return;
-    }
+      const downloadPDF = () => {
+        if (!planLimits?.features.certificateDownload) {
+          toast.error("Certificate downloads require Pro or Premium plan");
+          return;
+        }
 
-    generateCertificatePDF({
-      percentage,
-      score,
-      totalQuestions: questions.length,
-      timeTaken,
-      strongAreas: strongAreas(),
-      weakAreas: weakAreas(),
-    });
+        // ── skill breakdown using final snapshotted answers ──────
+        const skillMap: Record<string, { correct: number; total: number }> = {};
+        questions.forEach((q, i) => {
+          if (!skillMap[q.skill]) skillMap[q.skill] = { correct: 0, total: 0 };
+          skillMap[q.skill].total++;
+          if (finalAnswersRef.current[i] === q.correct) skillMap[q.skill].correct++;
+        });
+        const breakdown = Object.entries(skillMap).map(([skill, { correct, total }]) => ({
+          skill,
+          pct: Math.round((correct / total) * 100),
+        }));
+        const strong = breakdown
+          .filter(s => s.pct >= 70)
+          .sort((a, b) => b.pct - a.pct)
+          .map(s => s.skill);
+        const weak = breakdown
+          .filter(s => s.pct < 70)
+          .map(s => s.skill);
+        // ─────────────────────────────────────────────────────────
 
-    toast.success("Certificate downloaded!");
-  };
+        generateCertificatePDF({
+          percentage:     finalPercentageRef.current,
+          score:          finalScoreRef.current,
+          totalQuestions: questions.length,
+          timeTaken:      finalTimeTakenRef.current,
+          strongAreas:    strong,
+          weakAreas:      weak,
+          recipientName:  userName,
+        });
+
+        toast.success("Certificate downloaded!");
+      };
 
   // ── Loading state ─────────────────────────────────────────────────────────
   if (subLoading) {
@@ -706,9 +753,9 @@ export default function MockTest() {
                   )}
 
                   {/* Skill Breakdown table + Answer Review */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mb-8">
+                  <div className="flex flex-col-reverse lg:grid lg:grid-cols-2 gap-6 items-start mb-8 w-full">
                     {/* Skill Breakdown */}
-                    <div className="sticky top-20">
+                    <div className="lg:sticky lg:top-20 w-full">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="h-4 w-1 rounded-full bg-primary" />
                         <h3 className="font-display font-semibold text-foreground">
@@ -718,7 +765,7 @@ export default function MockTest() {
                           {skillBreakdown().length} skills
                         </span>
                       </div>
-                      <Card className="border-border overflow-hidden">
+                      <Card className="border-border overflow-hidden w-full">
                         <div className="grid grid-cols-2 px-4 py-2.5 bg-muted/50 border-b border-border">
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                             Skill

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { motion } from "framer-motion";
+import aiImage from "../assets/about.png";
 
 const features = [
   {
@@ -183,7 +184,7 @@ export default function About() {
                   scale: 1.03,
                 }}
                 transition={{ duration: 0.5 }}
-                src="https://images.unsplash.com/photo-1526379095098-d400fd0bf935?q=80&w=1600&auto=format&fit=crop"
+                src={aiImage}
                 alt="AI Platform"
                 className="relative rounded-[40px] border border-yellow-500/20 shadow-2xl"
               />

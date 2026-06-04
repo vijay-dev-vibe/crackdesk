@@ -553,17 +553,17 @@ RULES:
               </span>
             </div>
             <h1 style={{
-              fontFamily: "'Playfair Display', serif",
+              fontFamily: "'inter', sans-serif",
               fontSize: "clamp(36px, 5vw, 52px)",
               fontWeight: 600, lineHeight: 1.15,
               color: C.text, letterSpacing: "-0.5px",
               marginBottom: 14,
             }}>
               Practice. Prepare. 
-              <em style={{ fontStyle: "times new roman", color: C.accent }}> Perform.</em>
+              <em style={{ fontStyle: "inter", color: C.accent }}> Perform.</em>
             </h1>
             <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.75, maxWidth: 6020, fontWeight: 300 }}>
-              Paste the job description and upload your résumé. Aria — your AI interviewer —
+              Paste the job description and upload your resume. Aria — your AI interviewer —
               will generate 8 tailored questions, conduct a live video interview, then deliver
               a comprehensive performance report.
             </p>
@@ -631,7 +631,7 @@ RULES:
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
                 }}>📋</div>
                 <div>
-                  <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Job Description</p>
+                  <p style={{ fontFamily: "'inter', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Job Description</p>
                   <p style={{ fontSize: 11, color: C.textLight, marginTop: 1 }}>Role, responsibilities & requirements</p>
                 </div>
                 {jd.length > 500 && (
@@ -669,7 +669,7 @@ RULES:
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
                 }}>📄</div>
                 <div>
-                  <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Your Résumé</p>
+                  <p style={{ fontFamily: "'inter', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Your Resume</p>
                   <p style={{ fontSize: 11, color: C.textLight, marginTop: 1 }}>Experience, skills & education</p>
                 </div>
                 {resumeText.length > 200 && !resumeLoading && (
@@ -696,7 +696,7 @@ RULES:
                   }}>
                   <FileText size={22} style={{ color: C.textLight, margin: "0 auto 8px" }} />
                   <p style={{ fontSize: 12, color: C.textMid, marginBottom: 3 }}>
-                    Drop your résumé or <span style={{ color: C.accent, fontWeight: 600 }}>browse files</span>
+                    Drop your resume or <span style={{ color: C.accent, fontWeight: 600 }}>browse files</span>
                   </p>
                   <p style={{ fontSize: 10, color: C.textLight, letterSpacing: 1 }}>.PDF · .TXT supported — auto-extracted</p>
                   <input ref={fileInputRef} type="file" accept=".txt,.pdf"
@@ -757,7 +757,7 @@ RULES:
                 value={resumeText}
                 rows={6}
                 onChange={e => setResumeText(e.target.value)}
-                placeholder="Paste your résumé text — experience, skills, education, achievements…"
+                placeholder="Paste your resume text — experience, skills, education, achievements…"
                 style={{
                   width: "100%", resize: "none", outline: "none",
                   border: `1.5px solid ${C.border}`, borderRadius: 10,
@@ -767,7 +767,7 @@ RULES:
                 }}
               />
               <p style={{ fontSize: 10, color: resumeText.length > 200 ? C.accent : C.textLight, marginTop: 6, textAlign: "right", letterSpacing: 0.5 }}>
-                {resumeText.length > 200 ? "✓ Résumé detected" : "Include experience, skills & education"}
+                {resumeText.length > 200 ? "✓ Resume detected" : "Include experience, skills & education"}
               </p>
             </div>
           </div>

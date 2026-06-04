@@ -3,28 +3,66 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, CheckCircle2, ChevronDown, ChevronUp, Search } from "lucide-react";
+import {
+  Eye, EyeOff, CheckCircle2, ChevronDown, ChevronUp,
+  Search, RefreshCw, Copy,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { COURSE_CATEGORIES, initializeStudentQuestions } from "@/lib/studentQuestions";
 
+// ── Password strength helpers ────────────────────────────────────────────────
+function getPasswordStrength(pwd: string): {
+  score: number;
+  label: string;
+  color: string;
+} {
+  let score = 0;
+  if (pwd.length >= 8)              score++;
+  if (pwd.length >= 12)             score++;
+  if (/[A-Z]/.test(pwd))            score++;
+  if (/[a-z]/.test(pwd))            score++;
+  if (/[0-9]/.test(pwd))            score++;
+  if (/[^A-Za-z0-9]/.test(pwd))    score++;
+
+  if (score <= 2) return { score, label: "Weak",        color: "bg-red-500"    };
+  if (score <= 3) return { score, label: "Fair",        color: "bg-orange-400" };
+  if (score <= 4) return { score, label: "Good",        color: "bg-yellow-400" };
+  if (score <= 5) return { score, label: "Strong",      color: "bg-blue-500"   };
+  return           { score, label: "Very Strong",        color: "bg-green-500"  };
+}
+
+function generateStrongPassword(): string {
+  const upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower   = "abcdefghjkmnpqrstuvwxyz";
+  const digits  = "23456789";
+  const special = "@#$%^&*!?";
+  const all     = upper + lower + digits + special;
+  const pick    = (s: string) => s[Math.floor(Math.random() * s.length)];
+  const base    = [pick(upper), pick(lower), pick(digits), pick(special)];
+  for (let i = base.length; i < 16; i++) base.push(pick(all));
+  return base.sort(() => Math.random() - 0.5).join("");
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 export default function Signup() {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [showPass, setShowPass] = useState(false);
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [college, setCollege] = useState("");
-  const [password, setPassword] = useState("");
-  const [dob, setDob] = useState("");
-  const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+  const [step,             setStep]             = useState<1 | 2>(1);
+  const [showPass,         setShowPass]         = useState(false);
+  const [fullName,         setFullName]         = useState("");
+  const [email,            setEmail]            = useState("");
+  const [college,          setCollege]          = useState("");
+  const [password,         setPassword]         = useState("");
+  const [dob,              setDob]              = useState("");
+  const [selectedCourses,  setSelectedCourses]  = useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(
     COURSE_CATEGORIES[0].category
   );
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [search,   setSearch]   = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [copied,   setCopied]   = useState(false);
   const navigate = useNavigate();
 
-  // ── Step 1 validation ────────────────────────────────────────────────────
+  // ── Step 1 validation ──────────────────────────────────────────────────────
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -32,14 +70,15 @@ export default function Signup() {
       setError("Please fill in all fields.");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    const { score } = getPasswordStrength(password);
+    if (score < 4) {
+      setError("Please use a stronger password — click the 🔄 icon to generate one.");
       return;
     }
     setStep(2);
   };
 
-  // ── Course toggle ────────────────────────────────────────────────────────
+  // ── Course toggle ──────────────────────────────────────────────────────────
   const toggleCourse = (key: string) => {
     if (selectedCourses.includes(key)) {
       setSelectedCourses(selectedCourses.filter((k) => k !== key));
@@ -54,7 +93,7 @@ export default function Signup() {
     }
   };
 
-  // ── Signup submit ────────────────────────────────────────────────────────
+  // ── Signup submit ──────────────────────────────────────────────────────────
   const handleSignup = async () => {
     if (selectedCourses.length === 0 || selectedCourses.length > 5) {
       setError("Please select 1 to 5 courses.");
@@ -68,9 +107,9 @@ export default function Signup() {
       password,
       options: {
         data: {
-          full_name: fullName,
+          full_name:    fullName,
           college_name: college,
-          departments: selectedCourses,
+          departments:  selectedCourses,
         },
       },
     });
@@ -83,20 +122,20 @@ export default function Signup() {
 
     if (data.user) {
       const { error: profileError } = await supabase.from("profiles").upsert({
-        id: data.user.id,
-        full_name: fullName,
+        id:            data.user.id,
+        full_name:     fullName,
         email,
-        college_name: college,
+        college_name:  college,
         date_of_birth: dob,
-        departments: selectedCourses,
-        plan_type: "free",
-        avatar_key: "adventurer:luna",
-        avatar_url: null,
+        departments:   selectedCourses,
+        plan_type:     "free",
+        avatar_key:    "adventurer:luna",
+        avatar_url:    null,
       });
       if (profileError) console.error("Profile creation failed:", profileError.message);
 
-      localStorage.setItem("generating_questions", "true");
-      localStorage.setItem("generating_departments", JSON.stringify(selectedCourses));
+      localStorage.setItem("generating_questions",    "true");
+      localStorage.setItem("generating_departments",  JSON.stringify(selectedCourses));
 
       navigate("/dashboard", { replace: true });
 
@@ -115,7 +154,22 @@ export default function Signup() {
     setLoading(false);
   };
 
-  // ── Derived: filtered categories for search ──────────────────────────────
+  // ── Copy password ──────────────────────────────────────────────────────────
+  const handleCopy = () => {
+    if (!password) return;
+    navigator.clipboard.writeText(password);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── Generate password ──────────────────────────────────────────────────────
+  const handleGenerate = () => {
+    const pwd = generateStrongPassword();
+    setPassword(pwd);
+    setShowPass(true);
+  };
+
+  // ── Derived ───────────────────────────────────────────────────────────────
   const lowerSearch = search.toLowerCase();
   const filteredCategories = search.trim()
     ? COURSE_CATEGORIES.map((cat) => ({
@@ -127,7 +181,6 @@ export default function Signup() {
       })).filter((cat) => cat.courses.length > 0)
     : COURSE_CATEGORIES;
 
-  // ── Selected labels for chips ─────────────────────────────────────────────
   const selectedLabels = selectedCourses.map((key) => {
     for (const cat of COURSE_CATEGORIES) {
       const found = cat.courses.find((c) => c.key === key);
@@ -136,9 +189,21 @@ export default function Signup() {
     return { key, label: key };
   });
 
+  const pwdStrength = password.length > 0 ? getPasswordStrength(password) : null;
+
+  const pwdRequirements = [
+    { label: "8+ characters",     met: password.length >= 8           },
+    { label: "12+ characters",    met: password.length >= 12          },
+    { label: "Uppercase letter",  met: /[A-Z]/.test(password)         },
+    { label: "Lowercase letter",  met: /[a-z]/.test(password)         },
+    { label: "Number",            met: /[0-9]/.test(password)         },
+    { label: "Special character", met: /[^A-Za-z0-9]/.test(password)  },
+  ];
+
   return (
     <div className="flex min-h-screen">
-      {/* ── Left branding panel ── */}
+
+      {/* ── Left branding panel ───────────────────────────────────────────── */}
       <div className="hidden w-1/2 items-center justify-center gradient-primary lg:flex">
         <div className="max-w-md px-12 text-center">
           <div className="mb-6 flex justify-center">
@@ -146,7 +211,9 @@ export default function Signup() {
               <span className="font-display text-3xl font-bold text-primary-foreground">A</span>
             </div>
           </div>
-          <h2 className="font-display text-3xl font-bold text-primary-foreground">Join MapReducer</h2>
+          <h2 className="font-display text-3xl font-bold text-primary-foreground">
+            Join MapReducer
+          </h2>
           <p className="mt-4 text-primary-foreground/70">
             Start preparing smarter with AI-powered mock tests tailored to real job descriptions.
           </p>
@@ -169,9 +236,10 @@ export default function Signup() {
         </div>
       </div>
 
-      {/* ── Right form panel ── */}
+      {/* ── Right form panel ──────────────────────────────────────────────── */}
       <div className="flex flex-1 items-center justify-center px-6 py-12 overflow-y-auto">
         <div className="w-full max-w-lg">
+
           <Link to="/" className="mb-8 flex items-center gap-2 lg:hidden">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
               <span className="font-display text-lg font-bold text-primary-foreground">A</span>
@@ -179,10 +247,12 @@ export default function Signup() {
             <span className="font-display text-xl font-bold">MapReducer</span>
           </Link>
 
-          {/* ════════════════════ STEP 1 ════════════════════ */}
+          {/* ══════════════ STEP 1 ══════════════ */}
           {step === 1 && (
             <>
-              <h1 className="font-display text-2xl font-bold text-foreground">Create your account</h1>
+              <h1 className="font-display text-2xl font-bold text-foreground">
+                Create your account
+              </h1>
               <p className="mt-1 text-sm text-muted-foreground">Step 1 of 2 — Your details</p>
 
               {error && (
@@ -192,6 +262,8 @@ export default function Signup() {
               )}
 
               <form className="mt-8 space-y-5" onSubmit={handleNextStep}>
+
+                {/* Full Name */}
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
                   <Input
@@ -202,6 +274,8 @@ export default function Signup() {
                     required
                   />
                 </div>
+
+                {/* Email */}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -213,16 +287,20 @@ export default function Signup() {
                     required
                   />
                 </div>
+
+                {/* College */}
                 <div className="space-y-2">
                   <Label htmlFor="college">College</Label>
                   <Input
                     id="college"
-                    placeholder="Anna University"
+                    placeholder="Your college name"
                     value={college}
                     onChange={(e) => setCollege(e.target.value)}
                     required
                   />
                 </div>
+
+                {/* Date of Birth */}
                 <div className="space-y-2">
                   <Label htmlFor="dob">Date of Birth</Label>
                   <Input
@@ -233,8 +311,21 @@ export default function Signup() {
                     required
                   />
                 </div>
+
+                {/* Password */}
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <button
+                      type="button"
+                      onClick={handleGenerate}
+                      className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Generate strong password
+                    </button>
+                  </div>
+
                   <div className="relative">
                     <Input
                       id="password"
@@ -243,16 +334,105 @@ export default function Signup() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      className="pr-24 font-mono text-sm"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                      {/* Copy */}
+                      <button
+                        type="button"
+                        title={copied ? "Copied!" : "Copy password"}
+                        onClick={handleCopy}
+                        className={`p-1.5 rounded transition-colors ${
+                          copied
+                            ? "text-green-500"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      {/* Generate */}
+                      <button
+                        type="button"
+                        title="Generate new password"
+                        onClick={handleGenerate}
+                        className="p-1.5 rounded text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                      {/* Show / hide */}
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(!showPass)}
+                        className="p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPass
+                          ? <EyeOff className="h-3.5 w-3.5" />
+                          : <Eye    className="h-3.5 w-3.5" />
+                        }
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Strength meter */}
+                  {pwdStrength && (
+                    <div className="space-y-2 pt-1">
+
+                      {/* Bar */}
+                      <div className="flex gap-1">
+                        {[1,2,3,4,5,6].map((i) => (
+                          <div
+                            key={i}
+                            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                              i <= pwdStrength.score
+                                ? pwdStrength.color
+                                : "bg-muted"
+                            }`}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Label */}
+                      <p className={`text-xs font-semibold ${
+                        pwdStrength.score <= 2 ? "text-red-500"
+                        : pwdStrength.score <= 3 ? "text-orange-400"
+                        : pwdStrength.score <= 4 ? "text-yellow-500"
+                        : pwdStrength.score <= 5 ? "text-blue-500"
+                        : "text-green-500"
+                      }`}>
+                        Password strength: {pwdStrength.label}
+                      </p>
+
+                      {/* Requirements checklist */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        {pwdRequirements.map(({ label, met }) => (
+                          <p
+                            key={label}
+                            className={`text-xs flex items-center gap-1.5 transition-colors ${
+                              met ? "text-green-600" : "text-muted-foreground"
+                            }`}
+                          >
+                            <span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold ${
+                              met
+                                ? "bg-green-100 text-green-600"
+                                : "bg-muted text-muted-foreground"
+                            }`}>
+                              {met ? "✓" : "○"}
+                            </span>
+                            {label}
+                          </p>
+                        ))}
+                      </div>
+
+                      {/* Tip when weak */}
+                      {pwdStrength.score < 4 && (
+                        <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                          💡 Click <strong>Generate strong password</strong> above for a secure 16-character password with mixed characters.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
+
                 <Button variant="hero" className="w-full" type="submit">
                   Next — Choose Courses →
                 </Button>
@@ -267,15 +447,14 @@ export default function Signup() {
             </>
           )}
 
-          {/* ════════════════════ STEP 2 ════════════════════ */}
+          {/* ══════════════ STEP 2 ══════════════ */}
           {step === 2 && (
             <>
               <h1 className="font-display text-2xl font-bold text-foreground">
                 Choose your courses
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Step 2 of 2 — Select up to{" "}
-                <strong>5 courses</strong> across any category
+                Step 2 of 2 — Select up to <strong>5 courses</strong> across any category
               </p>
 
               {error && (
@@ -328,7 +507,7 @@ export default function Signup() {
                 />
               </div>
 
-              {/* Category accordion list */}
+              {/* Category accordion */}
               <div className="mt-3 rounded-xl border border-border overflow-hidden divide-y divide-border max-h-[420px] overflow-y-auto">
                 {filteredCategories.map((cat) => {
                   const isOpen =
@@ -339,7 +518,6 @@ export default function Signup() {
 
                   return (
                     <div key={cat.category}>
-                      {/* Category header */}
                       <button
                         type="button"
                         onClick={() =>
@@ -365,18 +543,16 @@ export default function Signup() {
                         </div>
                         {!search.trim() && (
                           isOpen
-                            ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                            ? <ChevronUp   className="h-4 w-4 text-muted-foreground shrink-0" />
                             : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                         )}
                       </button>
 
-                      {/* Course grid inside category */}
                       {isOpen && (
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-background">
                           {cat.courses.map((course) => {
                             const isSelected = selectedCourses.includes(course.key);
-                            const isDisabled =
-                              !isSelected && selectedCourses.length >= 5;
+                            const isDisabled = !isSelected && selectedCourses.length >= 5;
                             return (
                               <button
                                 key={course.key}
@@ -432,6 +608,7 @@ export default function Signup() {
               </div>
             </>
           )}
+
         </div>
       </div>
     </div>

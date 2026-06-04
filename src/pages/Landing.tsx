@@ -25,7 +25,7 @@ const testimonials = [
   { name: "Ananya Gupta", college: "BITS Pilani", text: "The AI-generated questions felt like real interview prep. The PDF certificate is a nice touch for applications.", rating: 5 },
 ];
 
-const companyLogos = ["TCS", "Infosys", "Wipro", "Zoho", "Accenture"];
+const companyLogos = [];
 
 export default function Landing() {
   return (
