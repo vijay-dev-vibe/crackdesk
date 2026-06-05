@@ -439,7 +439,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Top Stat Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
           {[
             { label: "Tests Taken", value: stats.testsTaken, prefix: "", suffix: "", badge: "0.0%", up: true, icon: BookOpen },
             { label: "Average Score", value: stats.avgScore, prefix: "", suffix: "%", badge: "0.0%", up: true, icon: TrendingUp },
@@ -447,7 +447,7 @@ export default function Dashboard() {
           ].map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
               <div style={CARD}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 28 }}>
                   <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
                      {s.label}
                   </span>
@@ -471,7 +471,7 @@ export default function Dashboard() {
         </div>
 
         {/* Middle Row — Stacked Bar + Weekly Bar */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
 
           {/* Stacked Bar Chart - LOCKED for free/starter */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
@@ -548,7 +548,7 @@ export default function Dashboard() {
         </div>
 
         {/* Bottom Row — Donut + Recent Tests Table */}
-        <div style={{ display: "grid", gridTemplateColumns: "0.7fr 1.3fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.7fr 1.3fr", gap: 16 }}>
 
           {/* Donut - LOCKED for free/starter */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}

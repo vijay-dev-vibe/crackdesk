@@ -131,9 +131,6 @@ export default function Navbar() {
           </div>
           <span className="font-display text-xl font-bold text-foreground">
             Map<span className="text-gradient">Reducer</span>
-                <p className="text-xs text-muted-foreground">
-                  by Minimize Technology Pvt. Ltd.
-                </p>
           </span>
         </Link>
 

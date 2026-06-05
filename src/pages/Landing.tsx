@@ -53,7 +53,7 @@ export default function Landing() {
               className="mt-5 text-lg text-muted-foreground md:text-xl"
               initial="hidden" animate="visible" variants={fadeUp} custom={2}
             >
-              Paste any job description and get a personalized 20-question assessment
+              Paste any job description and get a personalized assessment
               in seconds. Built for Indian engineering students targeting top companies.
             </motion.p>
             <motion.div

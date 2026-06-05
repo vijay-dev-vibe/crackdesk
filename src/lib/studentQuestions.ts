@@ -19,7 +19,7 @@ export interface CourseCategory {
 export const COURSE_CATEGORIES: CourseCategory[] = [
   {
     category: "Engineering & Technology",
-    icon: "⚙️",
+    icon: "",
     courses: [
       { key: "mech_eng",          label: "Mechanical Engineering" },
       { key: "civil_eng",         label: "Civil Engineering" },
@@ -71,7 +71,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Medical & Health Sciences",
-    icon: "🏥",
+    icon: "",
     courses: [
       { key: "mbbs",              label: "MBBS" },
       { key: "bds",               label: "BDS" },
@@ -118,7 +118,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Arts & Humanities",
-    icon: "🎭",
+    icon: "",
     courses: [
       { key: "ba_english",        label: "BA English" },
       { key: "ba_tamil",          label: "BA Tamil" },
@@ -149,7 +149,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Science",
-    icon: "🔬",
+    icon: "",
     courses: [
       { key: "bsc_physics",       label: "B.Sc Physics" },
       { key: "bsc_chemistry",     label: "B.Sc Chemistry" },
@@ -181,7 +181,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Commerce & Management",
-    icon: "📈",
+    icon: "",
     courses: [
       { key: "bcom",              label: "B.Com" },
       { key: "bcom_af",           label: "B.Com Accounting & Finance" },
@@ -214,7 +214,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Computer & IT",
-    icon: "💻",
+    icon: "",
     courses: [
       { key: "bca",               label: "BCA" },
       { key: "mca",               label: "MCA" },
@@ -241,7 +241,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Law",
-    icon: "⚖️",
+    icon: "",
     courses: [
       { key: "llb",               label: "LLB" },
       { key: "ba_llb",            label: "BA LLB" },
@@ -260,7 +260,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Agriculture & Allied",
-    icon: "🌾",
+    icon: "",
     courses: [
       { key: "bsc_agri",          label: "B.Sc Agriculture" },
       { key: "agri_economics",    label: "Agricultural Economics" },
@@ -280,7 +280,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Design & Fashion",
-    icon: "🎨",
+    icon: "",
     courses: [
       { key: "fashion_design",    label: "Fashion Designing" },
       { key: "interior_design",   label: "Interior Designing" },
@@ -296,7 +296,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Hotel, Aviation & Tourism",
-    icon: "✈️",
+    icon: "",
     courses: [
       { key: "hotel_mgmt_hatt",   label: "Hotel Management" },
       { key: "catering_tech",     label: "Catering Technology" },
@@ -311,7 +311,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Media & Communication",
-    icon: "📺",
+    icon: "",
     courses: [
       { key: "journalism",        label: "Journalism" },
       { key: "mass_comm",         label: "Mass Communication" },
@@ -328,7 +328,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Education & Teaching",
-    icon: "📚",
+    icon: "",
     courses: [
       { key: "bed",               label: "B.Ed" },
       { key: "med",               label: "M.Ed" },
@@ -340,7 +340,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Vocational & Skill",
-    icon: "🔧",
+    icon: "",
     courses: [
       { key: "electrician",       label: "Electrician" },
       { key: "fitter",            label: "Fitter" },
@@ -362,7 +362,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Maritime & Defense",
-    icon: "⚓",
+    icon: "",
     courses: [
       { key: "nautical_sci",      label: "Nautical Science" },
       { key: "marine_eng_md",     label: "Marine Engineering" },
@@ -373,7 +373,7 @@ export const COURSE_CATEGORIES: CourseCategory[] = [
   },
   {
     category: "Emerging & Future",
-    icon: "🚀",
+    icon: "",
     courses: [
       { key: "artificial_intel",  label: "Artificial Intelligence" },
       { key: "machine_learning",  label: "Machine Learning" },
