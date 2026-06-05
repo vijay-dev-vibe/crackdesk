@@ -1,12 +1,10 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
-import { BookOpen, TrendingUp, Award, Clock, ChevronRight, Loader2, Info, Download, Lock, Zap } from "lucide-react";
+import { BookOpen, TrendingUp, Award, Loader2, Info, Lock, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { initializeStudentQuestions } from "@/lib/studentQuestions";
-import { toast } from "sonner";
 import { useSubscription } from "@/hooks/useSubscription";
 import { canUserAccess } from "@/lib/plans";
 import type { PlanType } from "@/lib/plans";
@@ -29,6 +27,20 @@ const CARD = {
 const GOLD = "#D4A017";
 const GOLD2 = "#F5C842";
 
+// ── Responsive hook ──────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 function Badge({ value, up }: { value: string; up: boolean }) {
   return (
     <span style={{
@@ -44,22 +56,18 @@ function Badge({ value, up }: { value: string; up: boolean }) {
 
 function PlanBadge({ plan }: { plan: PlanType }) {
   const config = {
-    free: { color: "rgba(148,163,184,0.2)", textColor: "#94a3b8", label: "Free" },
-    starter: { color: "rgba(59,130,246,0.2)", textColor: "#3b82f6", label: "Starter" },
-    pro: { color: "rgba(168,85,247,0.2)", textColor: "#a855f7", label: "Pro ⭐" },
-    premium: { color: "rgba(245,158,11,0.2)", textColor: "#f59e0b", label: "Premium 👑" }
+    free:    { color: "rgba(148,163,184,0.2)", textColor: "#94a3b8", label: "Free" },
+    starter: { color: "rgba(59,130,246,0.2)",  textColor: "#3b82f6", label: "Starter" },
+    pro:     { color: "rgba(168,85,247,0.2)",  textColor: "#a855f7", label: "Pro ⭐" },
+    premium: { color: "rgba(245,158,11,0.2)",  textColor: "#f59e0b", label: "Premium 👑" },
   };
-  
   const c = config[plan];
   return (
     <span style={{
-      background: c.color,
-      color: c.textColor,
-      padding: "4px 12px",
-      borderRadius: 8,
-      fontSize: 11,
-      fontWeight: 700,
-      letterSpacing: "0.05em"
+      background: c.color, color: c.textColor,
+      padding: "4px 12px", borderRadius: 8,
+      fontSize: 11, fontWeight: 700, letterSpacing: "0.05em",
+      whiteSpace: "nowrap",
     }}>
       {c.label}
     </span>
@@ -70,29 +78,16 @@ function LockedOverlay({ feature, plan }: { feature: string; plan: PlanType }) {
   const targetPlan = plan === "free" ? "starter" : "pro";
   return (
     <div style={{
-      position: "absolute",
-      inset: 0,
-      background: "rgba(26,26,46,0.85)",
-      backdropFilter: "blur(8px)",
-      borderRadius: 16,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-      zIndex: 10,
-      padding: 20,
-      textAlign: "center"
+      position: "absolute", inset: 0,
+      background: "rgba(26,26,46,0.85)", backdropFilter: "blur(8px)",
+      borderRadius: 16, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      gap: 12, zIndex: 10, padding: 20, textAlign: "center",
     }}>
       <div style={{
-        width: 48,
-        height: 48,
-        borderRadius: "50%",
+        width: 48, height: 48, borderRadius: "50%",
         background: `linear-gradient(135deg, ${GOLD2}33, ${GOLD}44)`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        marginBottom: 4
+        display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4,
       }}>
         <Lock size={20} style={{ color: GOLD }} />
       </div>
@@ -107,17 +102,10 @@ function LockedOverlay({ feature, plan }: { feature: string; plan: PlanType }) {
       <Link to="/pricing">
         <button style={{
           background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
-          color: "#1a1100",
-          border: "none",
-          borderRadius: 8,
-          padding: "8px 20px",
-          fontWeight: 700,
-          fontSize: 12,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          boxShadow: `0 4px 16px rgba(212,160,23,0.4)`
+          color: "#1a1100", border: "none", borderRadius: 8,
+          padding: "8px 20px", fontWeight: 700, fontSize: 12, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6,
+          boxShadow: `0 4px 16px rgba(212,160,23,0.4)`,
         }}>
           <Zap size={14} /> Upgrade Now
         </button>
@@ -126,7 +114,7 @@ function LockedOverlay({ feature, plan }: { feature: string; plan: PlanType }) {
   );
 }
 
-function MiniBarChart({ data, color }: { data: number[]; color: string }) {
+function MiniBarChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 48 }}>
@@ -159,7 +147,7 @@ function DonutChart({ pct }: { pct: number }) {
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={14} />
       <motion.circle
         cx={cx} cy={cy} r={r} fill="none"
-        stroke={`url(#dg)`} strokeWidth={14}
+        stroke="url(#dg)" strokeWidth={14}
         strokeDasharray={circ} strokeDashoffset={offset}
         strokeLinecap="round"
         transform={`rotate(-90 ${cx} ${cy})`}
@@ -189,7 +177,10 @@ function StackedBar({ months, data }: { months: string[]; data: number[][] }) {
         const totalH = (total / maxVal) * 110;
         return (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1 }}>
-            <div style={{ display: "flex", flexDirection: "column-reverse", width: "100%", height: totalH, borderRadius: 6, overflow: "hidden" }}>
+            <div style={{
+              display: "flex", flexDirection: "column-reverse",
+              width: "100%", height: totalH, borderRadius: 6, overflow: "hidden",
+            }}>
               {bars.map((v, j) => (
                 <motion.div key={j}
                   initial={{ scaleY: 0 }}
@@ -207,21 +198,23 @@ function StackedBar({ months, data }: { months: string[]; data: number[][] }) {
   );
 }
 
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const isMobile = useIsMobile();
+
   const [userName, setUserName] = useState("Student");
   const [generating, setGenerating] = useState(false);
   const [generatingSectors, setGeneratingSectors] = useState<string[]>([]);
   const [recentTests, setRecentTests] = useState<TestResult[]>([]);
   const [stats, setStats] = useState({ testsTaken: 0, avgScore: 0, bestScore: 0 });
   const [allTests, setAllTests] = useState<TestResult[]>([]);
-  
+
   const { subscription, loading, planLimits, mockTestsRemaining, aiInterviewsRemaining } = useSubscription();
   const userPlan = (subscription?.plan_type || "free") as PlanType;
 
-  // Check feature access
-  const hasDashboardAccess = canUserAccess(userPlan, "dashboard");
-  const hasProgressTracking = canUserAccess(userPlan, "progressTracking");
-  const hasWeeklyActivity = canUserAccess(userPlan, "weeklyActivityChart");
+  const hasDashboardAccess   = canUserAccess(userPlan, "dashboard");
+  const hasProgressTracking  = canUserAccess(userPlan, "progressTracking");
+  const hasWeeklyActivity    = canUserAccess(userPlan, "weeklyActivityChart");
   const hasScoreDistribution = canUserAccess(userPlan, "scoreDistribution");
 
   useEffect(() => {
@@ -245,17 +238,11 @@ export default function Dashboard() {
         setRecentTests(results.slice(0, 4) as TestResult[]);
         setAllTests(results as TestResult[]);
       }
-
-      const { data: profile } = await supabase.from("profiles").select("departments")
-        .eq("user_id", user.id).maybeSingle();
-      const departments: string[] = (profile as any)?.departments ?? user.user_metadata?.departments ?? [];
-      const { data: existing } = await supabase.from("student_questions").select("id")
-        .eq("user_id", user.id).limit(1);
     };
     init();
   }, []);
 
-  // Build chart data from real tests (last 6 months)
+  // Chart data
   const now = new Date();
   const monthLabels = Array.from({ length: 3 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - 2 + i, 1);
@@ -275,6 +262,7 @@ export default function Dashboard() {
     return count || Math.round(Math.random() * 3);
   });
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f6fb" }}>
@@ -283,27 +271,18 @@ export default function Dashboard() {
     );
   }
 
-  // Show upgrade prompt if no dashboard access
+  // ── Locked (no dashboard access) ──────────────────────────────────────────
   if (!hasDashboardAccess) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6fb" }}>
         <Navbar />
         <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{
-            ...CARD,
-            maxWidth: 600,
-            textAlign: "center",
-            padding: 48
-          }}>
+          <div style={{ ...CARD, maxWidth: 600, width: "100%", textAlign: "center", padding: isMobile ? 24 : 48 }}>
             <div style={{
-              width: 80,
-              height: 80,
-              borderRadius: "50%",
+              width: 80, height: 80, borderRadius: "50%",
               background: `linear-gradient(135deg, ${GOLD2}33, ${GOLD}44)`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 24px"
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 24px",
             }}>
               <Lock size={32} style={{ color: GOLD }} />
             </div>
@@ -314,60 +293,34 @@ export default function Dashboard() {
               You're currently on the <PlanBadge plan={userPlan} /> plan
             </p>
             <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24, fontSize: 13, lineHeight: 1.6 }}>
-              Unlock the full analytics dashboard with progress tracking, weekly activity charts,<br />
+              Unlock the full analytics dashboard with progress tracking, weekly activity charts,
               score distribution analysis, and performance trends by upgrading to Pro.
             </p>
-            
-            {/* Preview of locked features */}
-            <div style={{ 
-              padding: 24, 
-              background: "rgba(255,255,255,0.03)", 
-              borderRadius: 12, 
-              marginBottom: 24,
-              border: "1px solid rgba(255,255,255,0.05)"
+            <div style={{
+              padding: 24, background: "rgba(255,255,255,0.03)",
+              borderRadius: 12, marginBottom: 24, border: "1px solid rgba(255,255,255,0.05)",
             }}>
               <p style={{ color: GOLD2, fontSize: 12, fontWeight: 600, marginBottom: 16 }}>
                 🔓 UNLOCK WITH PRO:
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, textAlign: "left" }}>
-                {[
-                  " Score Overview Charts",
-                  " Weekly Activity Heatmap",
-                  " Score Distribution",
-                  " Performance Trends",
-                  " Unlimited History",
-                  " PDF Report Export"
-                ].map((feature, i) => (
-                  <div key={i} style={{ 
-                    color: "rgba(255,255,255,0.7)", 
-                    fontSize: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8
-                  }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, textAlign: "left" }}>
+                {["Score Overview Charts", "Weekly Activity Heatmap", "Score Distribution", "Performance Trends", "Unlimited History", "PDF Report Export"].map((feature, i) => (
+                  <div key={i} style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ color: GOLD }}>✓</span> {feature}
                   </div>
                 ))}
               </div>
             </div>
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-              <Link to="/pricing">
-                <button style={{
-                  background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
-                  color: "#1a1100",
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "12px 32px",
-                  fontWeight: 700,
-                  fontSize: 14,
-                  cursor: "pointer",
-                  boxShadow: `0 4px 20px rgba(212,160,23,0.4)`
-                }}>
-                  Upgrade to Pro
-                </button>
-              </Link>
-            </div>
+            <Link to="/pricing">
+              <button style={{
+                background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
+                color: "#1a1100", border: "none", borderRadius: 10,
+                padding: "12px 32px", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                boxShadow: `0 4px 20px rgba(212,160,23,0.4)`,
+              }}>
+                Upgrade to Pro
+              </button>
+            </Link>
           </div>
         </main>
         <Footer />
@@ -375,15 +328,18 @@ export default function Dashboard() {
     );
   }
 
+  // ── Main Dashboard ─────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6fb" }}>
       <Navbar />
 
       <AnimatePresence>
         {generating && (
-          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
+          <motion.div
+            initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
             className="fixed bottom-6 right-6 z-50 flex items-start gap-3 px-5 py-4 max-w-xs rounded-2xl"
-            style={{ ...CARD, boxShadow: "0 0 40px rgba(212,160,23,0.2)" }}>
+            style={{ ...CARD, boxShadow: "0 0 40px rgba(212,160,23,0.2)" }}
+          >
             <Loader2 className="h-5 w-5 animate-spin mt-0.5 shrink-0" style={{ color: GOLD }} />
             <div>
               <p style={{ color: GOLD2, fontWeight: 600, fontSize: 13 }}>Preparing questions</p>
@@ -393,14 +349,27 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      <main style={{ flex: 1, maxWidth: 1200, margin: "0 auto", width: "100%", padding: "32px 20px" }}>
+      <main style={{ flex: 1, maxWidth: 1200, margin: "0 auto", width: "100%", padding: isMobile ? "24px 16px" : "32px 20px" }}>
 
-        {/* Header Row */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-          style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-              <h1 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24, color: "#1a1a2e", margin: 0 }}>
+        {/* ── Header ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+          style={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "flex-start" : "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 28,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Title + badge row — wraps safely on mobile */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+              <h1 style={{
+                fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700,
+                fontSize: isMobile ? 20 : 24, color: "#1a1a2e", margin: 0,
+              }}>
                 Dashboard Overview
               </h1>
               <PlanBadge plan={userPlan} />
@@ -409,77 +378,77 @@ export default function Dashboard() {
               Welcome back, {userName} — track your prep analytics
             </p>
             {planLimits && (
-              <div style={{ marginTop: 8, display: "flex", gap: 16, fontSize: 12, color: "#64748b" }}>
-                <span>
-                  Mock Tests: <strong style={{ color: GOLD }}>
-                    {mockTestsRemaining === 'unlimited' ? '∞' : mockTestsRemaining} left
-                  </strong>
-                </span>
-                <span>
-                  AI Interviews: <strong style={{ color: GOLD }}>
-                    {aiInterviewsRemaining === 'unlimited' ? '∞' : aiInterviewsRemaining} left
-                  </strong>
-                </span>
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 12, fontSize: 12, color: "#64748b" }}>
+                <span>Mock Tests: <strong style={{ color: GOLD }}>{mockTestsRemaining === "unlimited" ? "∞" : mockTestsRemaining} left</strong></span>
+                <span>AI Interviews: <strong style={{ color: GOLD }}>{aiInterviewsRemaining === "unlimited" ? "∞" : aiInterviewsRemaining} left</strong></span>
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Link to="/mock-test">
-              <button style={{
-                background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
-                color: "#1a1100", border: "none", borderRadius: 10,
-                padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6,
-                boxShadow: `0 4px 16px rgba(212,160,23,0.35)`
-              }}>
-                <BookOpen size={14} /> Take Test
-              </button>
-            </Link>
-          </div>
+
+          {/* Take Test button — full width on mobile */}
+          <Link to="/mock-test" style={{ width: isMobile ? "100%" : "auto" }}>
+            <button style={{
+              width: isMobile ? "100%" : "auto",
+              background: `linear-gradient(135deg, ${GOLD2}, ${GOLD})`,
+              color: "#1a1100", border: "none", borderRadius: 10,
+              padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              boxShadow: `0 4px 16px rgba(212,160,23,0.35)`,
+            }}>
+              <BookOpen size={14} /> Take Test
+            </button>
+          </Link>
         </motion.div>
 
-        {/* Top Stat Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
+        {/* ── Stat Cards (1 col mobile / 3 col desktop) ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+          gap: 16,
+          marginBottom: 16,
+        }}>
           {[
-            { label: "Tests Taken", value: stats.testsTaken, prefix: "", suffix: "", badge: "0.0%", up: true, icon: BookOpen },
-            { label: "Average Score", value: stats.avgScore, prefix: "", suffix: "%", badge: "0.0%", up: true, icon: TrendingUp },
-            { label: "Best Score", value: stats.bestScore, prefix: "", suffix: "%", badge: "0.0%", up: false, icon: Award },
+            { label: "Tests Taken",   value: stats.testsTaken, suffix: "",  up: true  },
+            { label: "Average Score", value: stats.avgScore,   suffix: "%", up: true  },
+            { label: "Best Score",    value: stats.bestScore,  suffix: "%", up: false },
           ].map((s, i) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
               <div style={CARD}>
-                <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 28 }}>
-                  <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
-                     {s.label}
+                {/* Card header: label left, info icon right — always row */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, lineHeight: 1.3 }}>
+                    {s.label}
                   </span>
-                  <Info size={13} style={{ color: "rgba(255,255,255,0.2)" }} />
+                  <Info size={13} style={{ color: "rgba(255,255,255,0.2)", flexShrink: 0, marginTop: 2 }} />
                 </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                  <span style={{
-                    fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 32,
-                    color: "#fff"
-                  }}>
-                    {s.prefix}{s.value}{s.suffix}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 32, color: "#fff" }}>
+                    {s.value}{s.suffix}
                   </span>
-                  <Badge value={s.badge} up={s.up} />
+                  <Badge value="0.0%" up={s.up} />
                 </div>
                 <div style={{ marginTop: 14 }}>
-                  <MiniBarChart data={[3, 5, 4, 7, 6, 8, s.value > 0 ? 10 : 2]} color={GOLD} />
+                  <MiniBarChart data={[3, 5, 4, 7, 6, 8, s.value > 0 ? 10 : 2]} />
                 </div>
               </div>
             </motion.div>
           ))}
         </div>
 
-        {/* Middle Row — Stacked Bar + Weekly Bar */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
-
-          {/* Stacked Bar Chart - LOCKED for free/starter */}
+        {/* ── Middle Row: Score Overview + Weekly Activity ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr",
+          gap: 16,
+          marginBottom: 16,
+        }}>
+          {/* Score Overview */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
             style={{ position: "relative" }}>
             <div style={{ ...CARD, opacity: hasProgressTracking ? 1 : 0.6 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                 <div>
-                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}> Score Overview</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>Score Overview</p>
                   <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, color: "#fff", margin: 0 }}>
                     {stats.avgScore}%
                   </p>
@@ -491,7 +460,7 @@ export default function Dashboard() {
               <div style={{ marginTop: 20 }}>
                 <StackedBar months={monthLabels} data={monthData} />
               </div>
-              <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
+              <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
                 {["Correct", "Partial", "Wrong"].map((l, i) => (
                   <span key={l} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: [GOLD, GOLD2, "rgba(212,160,23,0.4)"][i], display: "inline-block" }} />
@@ -503,13 +472,13 @@ export default function Dashboard() {
             {!hasProgressTracking && <LockedOverlay feature="Score Overview" plan={userPlan} />}
           </motion.div>
 
-          {/* Weekly Tests Bar - LOCKED for free/starter */}
+          {/* Weekly Activity */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
             style={{ position: "relative" }}>
             <div style={{ ...CARD, opacity: hasWeeklyActivity ? 1 : 0.6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                 <div>
-                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}> Weekly Activity</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 2 }}>Weekly Activity</p>
                   <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, color: "#fff", margin: 0 }}>
                     {stats.testsTaken}
                   </p>
@@ -517,10 +486,11 @@ export default function Dashboard() {
                 </div>
                 <button style={{
                   background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "rgba(255,255,255,0.6)", borderRadius: 8, padding: "5px 12px", fontSize: 11, cursor: "pointer"
+                  color: "rgba(255,255,255,0.6)", borderRadius: 8, padding: "5px 12px",
+                  fontSize: 11, cursor: "pointer", whiteSpace: "nowrap",
                 }}>Weekly</button>
               </div>
-              <div style={{ marginTop: 20, display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
+              <div style={{ marginTop: 20, display: "flex", alignItems: "flex-end", gap: isMobile ? 4 : 8, height: 120 }}>
                 {weekData.map((v, i) => {
                   const max = Math.max(...weekData, 1);
                   const isToday = i === new Date().getDay();
@@ -534,7 +504,7 @@ export default function Dashboard() {
                           width: "100%", borderRadius: 6, transformOrigin: "bottom",
                           height: `${Math.max(8, (v / max) * 90)}px`,
                           background: isToday ? `linear-gradient(180deg, ${GOLD2}, ${GOLD})` : "rgba(255,255,255,0.08)",
-                          boxShadow: isToday ? `0 0 12px rgba(212,160,23,0.4)` : "none"
+                          boxShadow: isToday ? `0 0 12px rgba(212,160,23,0.4)` : "none",
                         }}
                       />
                       <span style={{ fontSize: 10, color: isToday ? GOLD : "rgba(255,255,255,0.3)" }}>{weekLabels[i]}</span>
@@ -547,10 +517,13 @@ export default function Dashboard() {
           </motion.div>
         </div>
 
-        {/* Bottom Row — Donut + Recent Tests Table */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.7fr 1.3fr", gap: 16 }}>
-
-          {/* Donut - LOCKED for free/starter */}
+        {/* ── Bottom Row: Donut + Recent Tests ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "0.7fr 1.3fr",
+          gap: 16,
+        }}>
+          {/* Score Distribution Donut */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
             style={{ position: "relative" }}>
             <div style={{ ...CARD, opacity: hasScoreDistribution ? 1 : 0.6 }}>
@@ -558,13 +531,14 @@ export default function Dashboard() {
                 <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>Score Distribution</p>
                 <button style={{
                   background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "4px 10px", fontSize: 11, cursor: "pointer"
+                  color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "4px 10px",
+                  fontSize: 11, cursor: "pointer",
                 }}>Monthly</button>
               </div>
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <DonutChart pct={stats.avgScore || 0} />
               </div>
-              <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
                 {[["Pass", GOLD], ["Merit", GOLD2], ["Other", "rgba(212,160,23,0.4)"]].map(([l, c]) => (
                   <span key={l as string} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: c as string, display: "inline-block" }} />
@@ -576,16 +550,26 @@ export default function Dashboard() {
             {!hasScoreDistribution && <LockedOverlay feature="Score Distribution" plan={userPlan} />}
           </motion.div>
 
-          {/* Recent Tests Table - Always visible */}
+          {/* Recent Tests Table */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
             <div style={CARD}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600 }}>        Recent Tests</p>
+                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 600 }}>Recent Tests</p>
                 <Link to="/test-history" style={{ color: GOLD, fontSize: 12, textDecoration: "none", fontWeight: 600 }}>See All</Link>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr", gap: "0 8px", marginBottom: 8 }}>
-                {["TEST NAME", "TYPE", "SCORE", "RESULT"].map(h => (
-                  <span key={h} style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600, letterSpacing: "0.08em", paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{h}</span>
+
+              {/* Table header — hide TYPE column on mobile to save space */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "2fr 1.5fr 1fr" : "2fr 1fr 1.5fr 1fr",
+                gap: "0 8px", marginBottom: 8,
+              }}>
+                {(isMobile ? ["TEST NAME", "SCORE", "RESULT"] : ["TEST NAME", "TYPE", "SCORE", "RESULT"]).map(h => (
+                  <span key={h} style={{
+                    fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600,
+                    letterSpacing: "0.08em", paddingBottom: 8,
+                    borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  }}>{h}</span>
                 ))}
               </div>
 
@@ -602,44 +586,58 @@ export default function Dashboard() {
                       <motion.div key={i}
                         initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.7 + i * 0.08 }}
-                        style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 1fr", gap: "0 8px", alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: isMobile ? "2fr 1.5fr 1fr" : "2fr 1fr 1.5fr 1fr",
+                          gap: "0 8px", alignItems: "center",
+                          padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {/* Test name */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                           <div style={{
-                            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
                             background: `linear-gradient(135deg, ${GOLD2}22, ${GOLD}33)`,
                             border: `1px solid ${GOLD}44`,
-                            display: "flex", alignItems: "center", justifyContent: "center"
+                            display: "flex", alignItems: "center", justifyContent: "center",
                           }}>
-                            <BookOpen size={12} style={{ color: GOLD }} />
+                            <BookOpen size={11} style={{ color: GOLD }} />
                           </div>
-                          <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 500 }}>
+                          <span style={{
+                            color: "#e2e8f0", fontSize: isMobile ? 11 : 12, fontWeight: 500,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
                             {t.test_title || "Mock Test"}
                           </span>
                         </div>
-                        <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Mock</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{
-                            flex: 1, height: 4, borderRadius: 4,
-                            background: "rgba(255,255,255,0.08)", overflow: "hidden"
-                          }}>
+
+                        {/* TYPE — desktop only */}
+                        {!isMobile && (
+                          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Mock</span>
+                        )}
+
+                        {/* Score bar */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ flex: 1, height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${pct}%` }}
                               transition={{ delay: 0.8 + i * 0.1, duration: 0.8, ease: "easeOut" }}
                               style={{
                                 height: "100%", borderRadius: 4,
-                                background: passed ? `linear-gradient(90deg, ${GOLD2}, ${GOLD})` : "#f87171"
+                                background: passed ? `linear-gradient(90deg, ${GOLD2}, ${GOLD})` : "#f87171",
                               }}
                             />
                           </div>
                           <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", minWidth: 28 }}>{pct}%</span>
                         </div>
+
+                        {/* Result badge */}
                         <span style={{
                           fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
                           background: passed ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                           color: passed ? "#4ade80" : "#f87171",
-                          textAlign: "center"
+                          textAlign: "center",
                         }}>
                           {passed ? "Pass" : "Fail"}
                         </span>
@@ -651,6 +649,7 @@ export default function Dashboard() {
             </div>
           </motion.div>
         </div>
+
       </main>
       <Footer />
     </div>
