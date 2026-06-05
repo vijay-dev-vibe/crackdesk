@@ -62,7 +62,7 @@ export default function Landing() {
             >
               <Link to="/mock-test">
                 <Button variant="hero" size="lg" className="gap-2 text-base px-8">
-                  Free Trial <ChevronRight className="h-4 w-4" />
+                  Start Practice<ChevronRight className="h-4 w-4" />
                 </Button>
               </Link>
               <Link to="/pricing">

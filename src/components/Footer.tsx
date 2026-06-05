@@ -36,7 +36,11 @@ export default function Footer() {
           <div>
             <Link to="/" className="flex items-center gap-2">
               <Logo className="h-9 w-9" />
-              <span className="font-display text-lg font-bold">MapReducer</span>
+              <span className="font-display text-lg font-bold">MapReducer
+                <p className="text-xs text-muted-foreground">
+                  by Minimize Technology Pvt. Ltd.
+                </p>
+              </span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
               AI-powered mock tests tailored to your dream job description.
@@ -67,7 +71,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-10 border-t border-border pt-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} MapReducer. All rights reserved.
+          © {new Date().getFullYear()} Minimize Technology. All rights reserved.
         </div>
       </div>
     </footer>
