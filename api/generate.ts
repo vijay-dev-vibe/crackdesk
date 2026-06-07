@@ -20,11 +20,12 @@ async function callGroq(prompt: string): Promise<string> {
       Authorization: `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile", // CHANGED: Better model for longer responses
+      model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: "You are a quiz generator. Return ONLY a valid JSON array. Never truncate responses. Complete all questions before ending."
+          // FIX 1: Tell system to return a JSON array directly, not wrapped in an object
+          content: "You are a quiz generator. Return ONLY a valid JSON array starting with [ and ending with ]. Never wrap in an object. Never truncate. Complete all questions."
         },
         {
           role: "user",
@@ -32,8 +33,8 @@ async function callGroq(prompt: string): Promise<string> {
         }
       ],
       temperature: 0.3,
-      max_tokens: 4000, // INCREASED: From 2000 to 4000
-      response_format: { type: "json_object" }, // ADDED: Request JSON format
+      max_tokens: 6000, // increased for code questions which are longer
+      // FIX 2: Removed response_format — it forces object wrapping which breaks array parsing
     }),
   });
 
@@ -64,13 +65,13 @@ async function callGemini(prompt: string): Promise<string> {
       body: JSON.stringify({
         contents: [{ 
           parts: [{ 
-            text: `${prompt}\n\nIMPORTANT: Return ONLY a valid JSON array. Complete all questions.` 
+            text: `${prompt}\n\nIMPORTANT: Return ONLY a valid JSON array starting with [ and ending with ]. Complete all questions.` 
           }] 
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 4000, // INCREASED
-          responseMimeType: "application/json", // ADDED
+          maxOutputTokens: 6000,
+          // FIX 3: Removed responseMimeType — it can also cause wrapping issues
         },
       }),
     }
@@ -94,13 +95,28 @@ function safeParseQuestions(text: string): any[] {
   try {
     console.log("🔍 Attempting to parse response...");
     
-    // Remove markdown code blocks
     let cleaned = text
       .replace(/```json\s*/gi, "")
       .replace(/```\s*/g, "")
       .trim();
 
-    // Find JSON array boundaries
+    // FIX 4: If Groq wraps in an object like {"questions":[...]}, unwrap it
+    if (cleaned.startsWith("{")) {
+      console.warn("⚠️ Response is an object, trying to extract array inside...");
+      const inner = cleaned.match(/"(?:questions|data|items|results)"\s*:\s*(\[[\s\S]*\])/);
+      if (inner) {
+        cleaned = inner[1];
+        console.log("🔧 Unwrapped array from object key");
+      } else {
+        // Try to find any array inside the object
+        const anyArray = cleaned.match(/:\s*(\[[\s\S]*\])/);
+        if (anyArray) {
+          cleaned = anyArray[1];
+          console.log("🔧 Extracted first array found in object");
+        }
+      }
+    }
+
     const arrayStart = cleaned.indexOf("[");
     const arrayEnd = cleaned.lastIndexOf("]");
 
@@ -108,15 +124,10 @@ function safeParseQuestions(text: string): any[] {
       throw new Error("No JSON array start '[' found in response");
     }
 
-    // Extract the JSON array
     if (arrayEnd === -1 || arrayEnd < arrayStart) {
       console.warn("⚠️ Incomplete JSON detected - attempting repair...");
-      
-      // Find last complete object
       const lastObjectEnd = cleaned.lastIndexOf("}");
-      
       if (lastObjectEnd > arrayStart) {
-        // Try to close the array after the last complete object
         cleaned = cleaned.substring(arrayStart, lastObjectEnd + 1) + "]";
         console.log("🔧 Repaired JSON by closing array");
       } else {
@@ -126,13 +137,9 @@ function safeParseQuestions(text: string): any[] {
       cleaned = cleaned.substring(arrayStart, arrayEnd + 1);
     }
 
-    // Clean up common JSON issues
     cleaned = cleaned
-      // Remove trailing commas before closing brackets
       .replace(/,(\s*[\]}])/g, "$1")
-      // Fix missing commas between objects (common error)
       .replace(/}\s*{/g, "},\n{")
-      // Remove numbering like "1. {" 
       .replace(/\n\s*\d+\.\s*{/g, "\n{");
 
     console.log("📋 Cleaned JSON length:", cleaned.length);
@@ -190,7 +197,6 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (error: any) {
       lastError = error;
-      
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt);
         console.log(`⏳ Retry ${attempt + 1}/${maxRetries - 1} after ${delay}ms...`);
@@ -210,7 +216,6 @@ export default async function handler(
   console.log("\n=== GENERATE API ===");
   console.log("Timestamp:", new Date().toISOString());
 
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -229,13 +234,11 @@ export default async function handler(
 
     console.log("Prompt chars:", prompt.length);
 
-    // Don't truncate too early - use full prompt if reasonable
-    const effectivePrompt = prompt.length > 5000 ? prompt.slice(0, 5000) : prompt;
+    const effectivePrompt = prompt.length > 6000 ? prompt.slice(0, 6000) : prompt;
     
     let text = "";
     let apiUsed = "";
 
-    /* ---------- MULTI API FALLBACK WITH RETRY ---------- */
     try {
       text = await retryWithBackoff(async () => await callGroq(effectivePrompt));
       apiUsed = "Groq";
@@ -250,8 +253,6 @@ export default async function handler(
         console.log("✅ Gemini Success");
       } catch (e2: any) {
         console.error("❌ Both APIs failed");
-        console.error("Groq error:", e1.message);
-        console.error("Gemini error:", e2.message);
         throw new Error(`All AI providers failed. Last error: ${e2.message}`);
       }
     }
@@ -287,8 +288,6 @@ export default async function handler(
 
   } catch (err: any) {
     console.error("🔥 FINAL ERROR:", err.message);
-    console.error("Stack:", err.stack);
-
     return res.status(500).json({
       error: err.message || "Generation failed",
       details: process.env.NODE_ENV === "development" ? err.stack : undefined,

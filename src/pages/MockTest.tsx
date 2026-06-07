@@ -29,6 +29,25 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { generateCertificatePDF } from "@/lib/TestCertificatePDF";
 
+function QuestionText({ text }: { text: string }) {
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return (
+    <div className="mt-3 font-display text-lg font-semibold text-foreground space-y-3">
+      {parts.map((part, i) => {
+        if (part.startsWith("```")) {
+          const code = part.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
+          return (
+            <pre key={i} className="rounded-lg bg-muted border border-border p-4 text-sm font-mono text-foreground overflow-x-auto whitespace-pre leading-relaxed">
+              {code}
+            </pre>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </div>
+  );
+}
+
 type Phase = "input" | "quiz" | "results";
 
 // ── Plan badge pill ──────────────────────────────────────────────────────────

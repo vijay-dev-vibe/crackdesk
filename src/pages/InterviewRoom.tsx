@@ -77,7 +77,7 @@ function AIAvatar({ speaking }: { speaking: boolean }) {
             </>
           )}
           <motion.div style={{
-            width: 120, height: 120, borderRadius: "50%", overflow: "hidden",
+            width: 80, height: 80, borderRadius: "50%", overflow: "hidden",
             border: `3px solid ${speaking ? "#6366F1" : "#334155"}`,
             boxShadow: speaking ? "0 0 32px rgba(99,102,241,0.4)" : "0 4px 24px rgba(0,0,0,0.5)",
           }} animate={{ scale: speaking ? [1, 1.03, 1] : 1 }}
@@ -87,10 +87,10 @@ function AIAvatar({ speaking }: { speaking: boolean }) {
           </motion.div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <p style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, color: "#E2E8F0", fontSize: 15, letterSpacing: 4, textTransform: "uppercase" }}>Aria</p>
+          <p style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, color: "#E2E8F0", fontSize: 13, letterSpacing: 4, textTransform: "uppercase" }}>Aria</p>
           <p style={{ color: "#6366F1", fontSize: 9, fontWeight: 600, letterSpacing: 5, textTransform: "uppercase", marginTop: 2 }}>AI Interviewer</p>
         </div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 22 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 18 }}>
           {[3,6,9,12,9,6,3,6,9,6,3].map((h, i) => (
             <motion.div key={i} style={{ width: 3, borderRadius: 2, background: speaking ? "#6366F1" : "rgba(99,102,241,0.25)" }}
               animate={speaking ? { height: [`${h}px`, `${h*2.2}px`, `${h}px`] } : { height: `${h*0.5}px` }}
@@ -220,7 +220,6 @@ export default function InterviewRoom() {
       const msg = msgs[err.name] ?? `Camera error (${err.name}). Please allow access and try again.`;
       setCamError(msg);
       setCameraCheckStep("error");
-      // Try video only as fallback
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         streamRef.current = stream;
@@ -366,14 +365,14 @@ export default function InterviewRoom() {
   }, []);
 
   // ── Validate + generate plan, then go to camera-check ────────────────────
-const handleBeginClick = async () => {
-  if (loading) return;
-  if (!canStartAIInterview()) {
-    setPlanError(planLimits?.isOneTime
-      ? "You've used your free AI interview session. Upgrade to Starter for 2/month."
-      : "You've used all AI interview sessions this month. Upgrade for more.");
-    return;
-  }
+  const handleBeginClick = async () => {
+    if (loading) return;
+    if (!canStartAIInterview()) {
+      setPlanError(planLimits?.isOneTime
+        ? "You've used your free AI interview session. Upgrade to Starter for 2/month."
+        : "You've used all AI interview sessions this month. Upgrade for more.");
+      return;
+    }
     if (!jd.trim()) { setPlanError("Please paste a Job Description."); return; }
     if (!resumeText.trim()) { setPlanError("Please paste or upload your résumé."); return; }
     setPlanError("");
@@ -414,7 +413,6 @@ RULES:
 
       sessionStorage.setItem("iv_plan", JSON.stringify(parsed));
       setPlan(parsed);
-      // Now go to camera check phase
       setPhase("camera-check");
     } catch (e) {
       console.error(e);
@@ -450,17 +448,11 @@ RULES:
     setAnswer("");
 
     if (currentQ === plan.questions.length - 1) {
-      // Last question — save everything, navigate once
       setAiLoading(true);
-
-      // Save session data BEFORE navigating
       sessionStorage.setItem("iv_answers", JSON.stringify(newAnswers));
       sessionStorage.setItem("iv_violations", JSON.stringify(violations));
       sessionStorage.setItem("iv_duration", String(elapsed));
-
       stopAll();
-
-      // Fire-and-forget analysis
       (async () => {
         try {
           const analysis = await callInterviewAI({
@@ -474,7 +466,6 @@ RULES:
         } catch (e) { console.error("Analysis failed (non-fatal):", e); }
         try { await incrementAIInterviewUsage(); } catch { /* non-fatal */ }
       })();
-
       navigate("/ai-interview/analysis", { replace: true });
     } else {
       setAiLoading(true);
@@ -508,10 +499,10 @@ RULES:
     text: "#1C1917",
     textMid: "#78716C",
     textLight: "#A8A29E",
-    accent: "#D89B26",      // Deep forest green — professional, trustworthy
+    accent: "#D89B26",
     accentLight: "rgba(45,90,39,0.08)",
     accentBorder: "rgba(45,90,39,0.25)",
-    gold: "#B45309",        // Warm amber for secondary highlights
+    gold: "#B45309",
     goldLight: "rgba(180,83,9,0.08)",
     error: "#ddad20",
     errorBg: "rgba(153,27,27,0.06)",
@@ -519,33 +510,254 @@ RULES:
   };
 
   // ────────────────────────────────────────────────────────────────────────────
+  // GLOBAL RESPONSIVE STYLES (injected once)
+  // ────────────────────────────────────────────────────────────────────────────
+  const globalStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
+    * { box-sizing: border-box; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
+
+    .field-focus:focus {
+      outline: none;
+      border-color: #D89B26 !important;
+      box-shadow: 0 0 0 3px rgba(45,90,39,0.1);
+    }
+    .btn-primary { transition: all 0.2s; }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(45,90,39,0.25);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .upload-zone:hover {
+      border-color: #D89B26 !important;
+      background: rgba(45,90,39,0.04) !important;
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D4CFC8; border-radius: 3px; }
+
+    /* ── Prep phase ── */
+    .iv-prep-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .iv-steps-row {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 44px;
+      flex-wrap: wrap;
+      row-gap: 8px;
+    }
+    .iv-features-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .iv-plan-info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* ── Live phase ── */
+    .iv-live-videos {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      flex: 1;
+      min-height: 0;
+    }
+    .iv-live-video-panel {
+      flex: 1;
+      min-width: 0;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+      border: 1.5px solid #E8E4DE;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      position: relative;
+    }
+    .iv-live-topbar {
+      background: #fff;
+      border-bottom: 1.5px solid #E8E4DE;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      flex-shrink: 0;
+    }
+    .iv-live-bottombar {
+      background: #fff;
+      border-top: 1.5px solid #E8E4DE;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      flex-shrink: 0;
+    }
+    .iv-q-pill {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      background: #F8F7F4;
+      border: 1.5px solid #E8E4DE;
+      border-radius: 10px;
+      padding: 0 12px;
+      height: 38px;
+      overflow: hidden;
+    }
+    .iv-timer-pill {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #F8F7F4;
+      border: 1.5px solid #E8E4DE;
+      border-radius: 10px;
+      padding: 0 12px;
+      height: 38px;
+      min-width: 110px;
+    }
+    .iv-answer-input-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      border-radius: 10px;
+      overflow: hidden;
+      height: 38px;
+      background: #fff;
+      transition: border-color 0.2s;
+    }
+
+    /* ── Mobile breakpoint ── */
+    @media (max-width: 640px) {
+      /* Prep */
+      .iv-prep-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px;
+      }
+      .iv-steps-row {
+        gap: 6px;
+        margin-bottom: 28px;
+      }
+      .iv-steps-row .iv-step-connector {
+        width: 16px !important;
+      }
+      .iv-steps-row .iv-step-label {
+        display: none;
+      }
+      .iv-features-row {
+        gap: 6px;
+      }
+
+      /* Live phase: stack videos vertically */
+      .iv-live-videos {
+        flex-direction: column;
+        padding: 8px;
+        gap: 8px;
+      }
+      .iv-live-video-panel {
+        flex: none !important;
+        height: 0;
+        padding-bottom: 52%;
+        position: relative;
+      }
+      .iv-live-video-panel > * {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* Top bar: hide question text on small screens, show only q number + timer */
+      .iv-live-topbar {
+        height: auto;
+        min-height: 52px;
+        flex-wrap: wrap;
+        padding: 8px 10px;
+        gap: 6px;
+      }
+      .iv-q-pill {
+        height: 34px;
+        min-width: 0;
+      }
+      .iv-q-pill .iv-q-text {
+        display: none;
+      }
+      .iv-timer-pill {
+        min-width: 90px;
+        height: 34px;
+        gap: 6px;
+        padding: 0 10px;
+      }
+      .iv-timer-label {
+        display: none;
+      }
+
+      /* Bottom bar: tighten up */
+      .iv-live-bottombar {
+        height: auto;
+        min-height: 52px;
+        padding: 8px 10px;
+        gap: 6px;
+        flex-wrap: nowrap;
+      }
+      .iv-answer-input-wrap {
+        height: 36px;
+      }
+
+      /* Question card below videos on mobile */
+      .iv-mobile-question-card {
+        display: block !important;
+      }
+    }
+
+    /* ── Tablet breakpoint ── */
+    @media (max-width: 768px) and (min-width: 641px) {
+      .iv-prep-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .iv-live-videos {
+        flex-direction: column;
+        padding: 8px;
+      }
+      .iv-live-video-panel {
+        flex: none !important;
+        min-height: 180px;
+        max-height: 220px;
+      }
+    }
+  `;
+
+  // ────────────────────────────────────────────────────────────────────────────
   // RENDER: PREP PHASE
   // ────────────────────────────────────────────────────────────────────────────
   if (phase === "prep") {
     return (
       <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
-          * { box-sizing: border-box; }
-          .field-focus:focus { outline: none; border-color: #D89B26 !important; box-shadow: 0 0 0 3px rgba(45,90,39,0.1); }
-          .btn-primary { transition: all 0.2s; }
-          .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(45,90,39,0.25); }
-          .btn-primary:active:not(:disabled) { transform: translateY(0); }
-          .upload-zone:hover { border-color: #D89B26 !important; background: rgba(45,90,39,0.04) !important; }
-          ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; }
-          ::-webkit-scrollbar-thumb { background: #D4CFC8; border-radius: 3px; }
-        `}</style>
+        <style>{globalStyles}</style>
         <Navbar />
 
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: "48px 24px 80px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 16px 80px" }}>
 
           {/* Header */}
-          <div style={{ marginBottom: 52 }}>
+          <div style={{ marginBottom: 40 }}>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               padding: "5px 14px", borderRadius: 100,
               background: C.accentLight, border: `1px solid ${C.accentBorder}`,
-              marginBottom: 20,
+              marginBottom: 16,
             }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent }} />
               <span style={{ fontSize: 11, fontWeight: 600, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>
@@ -554,20 +766,20 @@ RULES:
             </div>
             <h1 style={{
               fontFamily: "'inter', sans-serif",
-              fontSize: "clamp(36px, 5vw, 52px)",
+              fontSize: "clamp(28px, 5vw, 52px)",
               fontWeight: 600, lineHeight: 1.15,
               color: C.text, letterSpacing: "-0.5px",
-              marginBottom: 14,
+              marginBottom: 12,
             }}>
-              Practice. Prepare. 
-              <em style={{ fontStyle: "inter", color: C.accent }}> Perform.</em>
+              Practice. Prepare.{" "}
+              <em style={{ fontStyle: "inter", color: C.accent }}>Perform.</em>
             </h1>
-            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.75, maxWidth: 6020, fontWeight: 300 }}>
+            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.75, maxWidth: 600, fontWeight: 300 }}>
               Paste the job description and upload your resume. Aria — your AI interviewer —
               will generate 8 tailored questions, conduct a live video interview, then deliver
               a comprehensive performance report.
             </p>
-            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
+            <div className="iv-features-row">
               {["8 tailored questions", "Camera + mic proctored", "Full AI analysis report"].map(t => (
                 <span key={t} style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
@@ -583,12 +795,12 @@ RULES:
           </div>
 
           {/* Steps */}
-          <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 44 }}>
+          <div className="iv-steps-row">
             {[["1", "Provide context", true], ["2", "Camera check", false], ["3", "Live interview", false], ["4", "Your report", false]].map(
               ([num, label, active], i) => (
                 <div key={String(num)} style={{ display: "flex", alignItems: "center" }}>
-                  {i > 0 && <div style={{ width: 36, height: 1, background: C.border, margin: "0 4px" }} />}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {i > 0 && <div className="iv-step-connector" style={{ width: 28, height: 1, background: C.border, margin: "0 4px" }} />}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <div style={{
                       width: 26, height: 26, borderRadius: "50%",
                       background: active ? C.accent : C.surface,
@@ -598,7 +810,7 @@ RULES:
                       color: active ? "#fff" : C.textLight,
                       flexShrink: 0,
                     }}>{num}</div>
-                    <span style={{ fontSize: 11, color: active ? C.text : C.textLight, fontWeight: active ? 500 : 400, whiteSpace: "nowrap" }}>
+                    <span className="iv-step-label" style={{ fontSize: 11, color: active ? C.text : C.textLight, fontWeight: active ? 500 : 400, whiteSpace: "nowrap" }}>
                       {label}
                     </span>
                   </div>
@@ -608,7 +820,7 @@ RULES:
           </div>
 
           {/* Divider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
             <div style={{ flex: 1, height: 1, background: C.border }} />
             <span style={{ fontSize: 10, letterSpacing: 3, textTransform: "uppercase", color: C.textLight, fontWeight: 600 }}>
               Session Setup
@@ -616,22 +828,22 @@ RULES:
             <div style={{ flex: 1, height: 1, background: C.border }} />
           </div>
 
-          {/* Two-column cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+          {/* Two-column cards (responsive via CSS class) */}
+          <div className="iv-prep-grid">
 
             {/* JD Card */}
             <div style={{
               background: C.surface, border: `1.5px solid ${C.border}`,
-              borderRadius: 16, padding: 28,
+              borderRadius: 16, padding: "24px 20px",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 10,
                   background: C.accentLight, border: `1px solid ${C.accentBorder}`,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0,
                 }}>📋</div>
-                <div>
-                  <p style={{ fontFamily: "'inter', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Job Description</p>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontFamily: "'inter', serif", fontSize: 15, fontWeight: 600, color: C.text }}>Job Description</p>
                   <p style={{ fontSize: 11, color: C.textLight, marginTop: 1 }}>Role, responsibilities & requirements</p>
                 </div>
                 {jd.length > 500 && (
@@ -641,15 +853,16 @@ RULES:
               <textarea
                 className="field-focus"
                 value={jd}
-                rows={14}
+                rows={12}
                 onChange={e => setJd(e.target.value)}
                 placeholder="Paste the full job description here — title, responsibilities, required skills…"
                 style={{
-                  width: "100%", resize: "none", outline: "none",
+                  width: "100%", resize: "vertical", outline: "none",
                   border: `1.5px solid ${C.border}`, borderRadius: 10,
                   padding: "12px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
                   color: C.text, background: C.bg, lineHeight: 1.7,
                   caretColor: C.accent, transition: "border-color 0.2s",
+                  minHeight: 160,
                 }}
               />
               <p style={{ fontSize: 10, color: jd.length > 500 ? C.accent : C.textLight, marginTop: 6, textAlign: "right", letterSpacing: 0.5 }}>
@@ -660,16 +873,16 @@ RULES:
             {/* Resume Card */}
             <div style={{
               background: C.surface, border: `1.5px solid ${C.border}`,
-              borderRadius: 16, padding: 28,
+              borderRadius: 16, padding: "24px 20px",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 10,
                   background: C.goldLight, border: "1px solid rgba(180,83,9,0.2)",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0,
                 }}>📄</div>
-                <div>
-                  <p style={{ fontFamily: "'inter', serif", fontSize: 16, fontWeight: 600, color: C.text }}>Your Resume</p>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontFamily: "'inter', serif", fontSize: 15, fontWeight: 600, color: C.text }}>Your Resume</p>
                   <p style={{ fontSize: 11, color: C.textLight, marginTop: 1 }}>Experience, skills & education</p>
                 </div>
                 {resumeText.length > 200 && !resumeLoading && (
@@ -690,7 +903,7 @@ RULES:
                   onDrop={e => { e.preventDefault(); setDropOver(false); handleFile(e.dataTransfer.files[0]); }}
                   style={{
                     border: `1.5px dashed ${dropOver ? C.accent : C.border}`,
-                    borderRadius: 10, padding: "18px 16px", textAlign: "center",
+                    borderRadius: 10, padding: "16px 14px", textAlign: "center",
                     cursor: "pointer", marginBottom: 14, transition: "all 0.2s",
                     background: dropOver ? C.accentLight : "transparent",
                   }}>
@@ -698,7 +911,7 @@ RULES:
                   <p style={{ fontSize: 12, color: C.textMid, marginBottom: 3 }}>
                     Drop your resume or <span style={{ color: C.accent, fontWeight: 600 }}>browse files</span>
                   </p>
-                  <p style={{ fontSize: 10, color: C.textLight, letterSpacing: 1 }}>.PDF · .TXT supported — auto-extracted</p>
+                  <p style={{ fontSize: 10, color: C.textLight, letterSpacing: 1 }}>.PDF · .TXT supported</p>
                   <input ref={fileInputRef} type="file" accept=".txt,.pdf"
                     style={{ display: "none" }}
                     onChange={e => handleFile(e.target.files?.[0] ?? null)} />
@@ -759,11 +972,12 @@ RULES:
                 onChange={e => setResumeText(e.target.value)}
                 placeholder="Paste your resume text — experience, skills, education, achievements…"
                 style={{
-                  width: "100%", resize: "none", outline: "none",
+                  width: "100%", resize: "vertical", outline: "none",
                   border: `1.5px solid ${C.border}`, borderRadius: 10,
                   padding: "12px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
                   color: C.text, background: C.bg, lineHeight: 1.7,
                   caretColor: C.accent, transition: "border-color 0.2s",
+                  minHeight: 120,
                 }}
               />
               <p style={{ fontSize: 10, color: resumeText.length > 200 ? C.accent : C.textLight, marginTop: 6, textAlign: "right", letterSpacing: 0.5 }}>
@@ -775,25 +989,26 @@ RULES:
           {/* Plan info */}
           {subscription && planLimits && (
             <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "12px 18px", borderRadius: 10,
               background: C.surface, border: `1.5px solid ${C.border}`, marginBottom: 16,
             }}>
-              <div>
-                <p style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "capitalize" }}>{subscription.plan_type} Plan</p>
-                <p style={{ fontSize: 11, color: C.textLight, marginTop: 2 }}>
-                  {planLimits.isOneTime
-                    ? `${planLimits.maxAIInterviewsPerMonth} free session total`
-                    : `${planLimits.maxAIInterviewsPerMonth} sessions / month`}
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {Array.from({ length: planLimits.maxAIInterviewsPerMonth }).map((_, i) => (
-                  <div key={i} style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: i === 0 ? C.border : C.accent,
-                  }} />
-                ))}
+              <div className="iv-plan-info-row">
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.text, textTransform: "capitalize" }}>{subscription.plan_type} Plan</p>
+                  <p style={{ fontSize: 11, color: C.textLight, marginTop: 2 }}>
+                    {planLimits.isOneTime
+                      ? `${planLimits.maxAIInterviewsPerMonth} free session total`
+                      : `${planLimits.maxAIInterviewsPerMonth} sessions / month`}
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {Array.from({ length: planLimits.maxAIInterviewsPerMonth }).map((_, i) => (
+                    <div key={i} style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: i === 0 ? C.border : C.accent,
+                    }} />
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -810,7 +1025,8 @@ RULES:
               {planError}
             </div>
           )}
-{/* CTA */}
+
+          {/* CTA */}
           {(() => {
             const isLocked = !loading && !canStartAIInterview();
             const isDisabled = generatingPlan || loading || isLocked;
@@ -847,7 +1063,8 @@ RULES:
                   <div style={{
                     marginTop: 12, padding: "12px 16px", borderRadius: 10,
                     background: "rgba(153,27,27,0.06)", border: "1px solid rgba(153,27,27,0.2)",
-                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    flexWrap: "wrap", gap: 12,
                   }}>
                     <p style={{ fontSize: 12, color: "#991B1B", margin: 0 }}>
                       {planLimits?.isOneTime
@@ -876,8 +1093,6 @@ RULES:
             );
           })()}
         </div>
-
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -888,23 +1103,18 @@ RULES:
   if (phase === "camera-check") {
     return (
       <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans', sans-serif", display: "flex", flexDirection: "column" }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
-          * { box-sizing: border-box; }
-          @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
-        `}</style>
+        <style>{globalStyles}</style>
         <Navbar />
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
-          <div style={{ width: "100%", maxWidth: 640 }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 16px 48px" }}>
+          <div style={{ width: "100%", maxWidth: 560 }}>
 
-            <div style={{ textAlign: "center", marginBottom: 36 }}>
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
               <div style={{
                 display: "inline-flex", alignItems: "center", gap: 8,
                 padding: "5px 14px", borderRadius: 100,
                 background: C.accentLight, border: `1px solid ${C.accentBorder}`,
-                marginBottom: 18,
+                marginBottom: 16,
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, animation: "pulse 2s infinite" }} />
                 <span style={{ fontSize: 11, fontWeight: 600, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>
@@ -913,8 +1123,8 @@ RULES:
               </div>
               <h2 style={{
                 fontFamily: "'Playfair Display', serif",
-                fontSize: "clamp(28px, 4vw, 38px)",
-                fontWeight: 600, color: C.text, marginBottom: 10,
+                fontSize: "clamp(24px, 4vw, 36px)",
+                fontWeight: 600, color: C.text, marginBottom: 8,
               }}>
                 Let's check your setup
               </h2>
@@ -926,8 +1136,8 @@ RULES:
             {/* Camera preview */}
             <div style={{
               background: "#0F172A",
-              borderRadius: 16, overflow: "hidden",
-              aspectRatio: "16/9", marginBottom: 24,
+              borderRadius: 14, overflow: "hidden",
+              aspectRatio: "16/9", marginBottom: 20,
               border: `2px solid ${cameraCheckStep === "ready" ? C.accent : C.border}`,
               position: "relative",
               boxShadow: cameraCheckStep === "ready" ? `0 0 0 4px ${C.accentLight}` : "none",
@@ -949,21 +1159,21 @@ RULES:
                 }}>
                   {cameraCheckStep === "requesting" && (
                     <>
-                      <Loader2 size={32} style={{ color: "#6366F1", animation: "spin 1s linear infinite" }} />
+                      <Loader2 size={28} style={{ color: "#6366F1", animation: "spin 1s linear infinite" }} />
                       <p style={{ color: "#94A3B8", fontSize: 13 }}>Requesting camera access…</p>
                     </>
                   )}
                   {cameraCheckStep === "error" && (
                     <>
-                      <VideoOff size={32} style={{ color: "#EF4444" }} />
-                      <p style={{ color: "#94A3B8", fontSize: 13, textAlign: "center", maxWidth: 320, padding: "0 16px" }}>{camError}</p>
+                      <VideoOff size={28} style={{ color: "#EF4444" }} />
+                      <p style={{ color: "#94A3B8", fontSize: 12, textAlign: "center", maxWidth: 280, padding: "0 16px" }}>{camError}</p>
                     </>
                   )}
                 </div>
               )}
               {streamReady && (
                 <div style={{
-                  position: "absolute", bottom: 12, left: 12,
+                  position: "absolute", bottom: 10, left: 10,
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "5px 12px", borderRadius: 100,
                   background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
@@ -972,12 +1182,8 @@ RULES:
                   <span style={{ fontSize: 10, color: "#fff", fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" }}>Camera Ready</span>
                 </div>
               )}
-              {/* Mic/cam controls */}
               {streamReady && (
-                <div style={{
-                  position: "absolute", bottom: 12, right: 12,
-                  display: "flex", gap: 8,
-                }}>
+                <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 8 }}>
                   {[
                     { on: camOn, onI: Video, offI: VideoOff, toggle: () => setCamOn(c => !c) },
                     { on: micOn, onI: Mic, offI: MicOff, toggle: () => setMicOn(m => !m) },
@@ -996,25 +1202,25 @@ RULES:
             </div>
 
             {/* Status checks */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
                 { label: "Camera", ok: streamReady && camOn, loading: cameraCheckStep === "requesting" },
                 { label: "Microphone", ok: streamReady && micOn, loading: cameraCheckStep === "requesting" },
               ].map(({ label, ok, loading: ld }) => (
                 <div key={label} style={{
                   display: "flex", alignItems: "center", gap: 10,
-                  padding: "12px 16px", borderRadius: 10,
+                  padding: "12px 14px", borderRadius: 10,
                   background: ok ? C.accentLight : ld ? "rgba(99,102,241,0.06)" : C.errorBg,
                   border: `1.5px solid ${ok ? C.accentBorder : ld ? "rgba(99,102,241,0.2)" : C.errorBorder}`,
                 }}>
                   {ld ? (
-                    <Loader2 size={16} style={{ color: "#6366F1", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                    <Loader2 size={15} style={{ color: "#6366F1", animation: "spin 1s linear infinite", flexShrink: 0 }} />
                   ) : ok ? (
-                    <CheckCircle2 size={16} style={{ color: C.accent, flexShrink: 0 }} />
+                    <CheckCircle2 size={15} style={{ color: C.accent, flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle size={16} style={{ color: C.error, flexShrink: 0 }} />
+                    <AlertCircle size={15} style={{ color: C.error, flexShrink: 0 }} />
                   )}
-                  <span style={{ fontSize: 13, fontWeight: 500, color: ok ? C.accent : ld ? "#6366F1" : C.error }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: ok ? C.accent : ld ? "#6366F1" : C.error }}>
                     {label} {ld ? "checking…" : ok ? "ready" : "unavailable"}
                   </span>
                 </div>
@@ -1024,12 +1230,12 @@ RULES:
             {/* Interview info */}
             {plan && (
               <div style={{
-                padding: "14px 18px", borderRadius: 10,
+                padding: "12px 16px", borderRadius: 10,
                 background: C.surface, border: `1.5px solid ${C.border}`,
-                marginBottom: 24,
+                marginBottom: 20,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Clock size={15} style={{ color: C.textMid, flexShrink: 0 }} />
+                  <Clock size={14} style={{ color: C.textMid, flexShrink: 0 }} />
                   <div>
                     <p style={{ fontSize: 13, fontWeight: 500, color: C.text }}>
                       {plan.role} — {plan.level} Interview
@@ -1047,7 +1253,7 @@ RULES:
                 width: "100%", height: 46, borderRadius: 10,
                 border: `1.5px solid ${C.border}`, background: C.surface,
                 color: C.text, fontFamily: "'DM Sans', sans-serif",
-                fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 12,
+                fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 10,
               }}>
                 Try Again
               </button>
@@ -1093,29 +1299,13 @@ RULES:
   // RENDER: LIVE PHASE
   // ────────────────────────────────────────────────────────────────────────────
   if (phase === "live" && q) {
-    const liveCard: React.CSSProperties = {
-      background: "#fff",
-      border: "1.5px solid #E8E4DE",
-      borderRadius: 16,
-      boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-    };
-    const liveBar: React.CSSProperties = {
-      background: "#fff",
-      borderBottom: "1.5px solid #E8E4DE",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-    };
-
     return (
       <div style={{
         position: "fixed", inset: 0, display: "flex", flexDirection: "column",
         background: "#F8F7F4", zIndex: 40,
         fontFamily: "'DM Sans', sans-serif",
       }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
-          @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
-        `}</style>
+        <style>{globalStyles}</style>
 
         <AnimatePresence>
           {tabBanner && (
@@ -1132,12 +1322,8 @@ RULES:
         </AnimatePresence>
 
         {/* Top bar */}
-        <div style={{ ...liveBar, height: 56, display: "flex", alignItems: "center", gap: 10, padding: "0 14px", flexShrink: 0 }}>
-          <div style={{
-            flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10,
-            background: "#F8F7F4", border: "1.5px solid #E8E4DE",
-            borderRadius: 10, padding: "0 12px", height: 38, overflow: "hidden",
-          }}>
+        <div className="iv-live-topbar">
+          <div className="iv-q-pill">
             <span style={{
               flexShrink: 0, background: C.accent, color: "#fff",
               borderRadius: 100, padding: "2px 10px", fontSize: 10,
@@ -1145,7 +1331,7 @@ RULES:
             }}>
               Q{(displayQ ?? 0) + 1}/{plan!.questions.length}
             </span>
-            <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div className="iv-q-text" style={{ minWidth: 0, flex: 1, overflow: "hidden", padding: "0 8px" }}>
               <p style={{
                 fontSize: 13, fontWeight: 500, color: C.text,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -1162,13 +1348,9 @@ RULES:
               {dq?.type}
             </span>
           </div>
-          <div style={{
-            flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
-            background: "#F8F7F4", border: "1.5px solid #E8E4DE",
-            borderRadius: 10, padding: "0 12px", height: 38, minWidth: 110,
-          }}>
-            <span style={{ fontSize: 9, color: C.textLight, letterSpacing: 2, textTransform: "uppercase" }}>Time</span>
-            <span style={{ fontFamily: "'Courier New', monospace", fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: 2 }}>
+          <div className="iv-timer-pill">
+            <span className="iv-timer-label" style={{ fontSize: 9, color: C.textLight, letterSpacing: 2, textTransform: "uppercase" }}>Time</span>
+            <span style={{ fontFamily: "'Courier New', monospace", fontSize: 16, fontWeight: 700, color: C.text, letterSpacing: 2 }}>
               {formatTime(elapsed)}
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1184,65 +1366,87 @@ RULES:
             animate={{ width: `${progress}%` }} transition={{ duration: 0.5 }} />
         </div>
 
+        {/* Mobile-only question card shown between topbar and videos */}
+        <div className="iv-mobile-question-card" style={{
+          display: "none",
+          margin: "8px 8px 0",
+          padding: "10px 14px",
+          background: "#fff",
+          border: `1.5px solid ${C.border}`,
+          borderRadius: 10,
+          flexShrink: 0,
+        }}>
+          <p style={{ fontSize: 12, color: C.textLight, marginBottom: 4, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+            Question {(displayQ ?? 0) + 1}
+          </p>
+          <p style={{ fontSize: 13, color: C.text, lineHeight: 1.6, margin: 0 }}>
+            {dq?.text}
+          </p>
+        </div>
+
         {/* Video panels */}
-        <div style={{ display: "flex", gap: 10, padding: 10, flex: 1, minHeight: 0 }}>
-          <div style={{ flex: 1, minWidth: 0, borderRadius: 14, overflow: "hidden", ...liveCard, position: "relative" }}>
+        <div className="iv-live-videos">
+          <div className="iv-live-video-panel">
             <AIAvatar speaking={speaking} />
             <div style={{
               position: "absolute", bottom: 10, left: 10,
               display: "flex", alignItems: "center", gap: 6,
-              padding: "5px 12px", borderRadius: 100,
+              padding: "4px 10px", borderRadius: 100,
               background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`,
             }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: speaking ? "#6366F1" : C.border }} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: C.textMid, letterSpacing: 2, textTransform: "uppercase" }}>AI Interviewer</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.textMid, letterSpacing: 2, textTransform: "uppercase" }}>AI Interviewer</span>
             </div>
           </div>
 
-          <div style={{ flex: 1, minWidth: 0, borderRadius: 14, overflow: "hidden", ...liveCard, position: "relative" }}>
+          <div className="iv-live-video-panel">
             <video ref={setVideoRef} autoPlay playsInline muted
               style={{
                 width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)",
                 display: camOn && streamReady ? "block" : "none",
               }} />
             {(!camOn || !streamReady) && (
-              <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "#F8F7F4" }}>
-                <VideoOff size={28} style={{ color: C.textLight }} />
-                <p style={{ fontSize: 12, color: C.textLight }}>{!streamReady ? "Initialising…" : "Camera off"}</p>
+              <div style={{
+                position: "absolute", inset: 0,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
+                background: "#F8F7F4",
+              }}>
+                <VideoOff size={24} style={{ color: C.textLight }} />
+                <p style={{ fontSize: 11, color: C.textLight }}>{!streamReady ? "Initialising…" : "Camera off"}</p>
               </div>
             )}
             <div style={{
               position: "absolute", bottom: 10, left: 10,
               display: "flex", alignItems: "center", gap: 6,
-              padding: "5px 12px", borderRadius: 100,
+              padding: "4px 10px", borderRadius: 100,
               background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`,
             }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: streamReady ? C.accent : C.border }} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: C.textMid, letterSpacing: 2, textTransform: "uppercase" }}>Candidate</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.textMid, letterSpacing: 2, textTransform: "uppercase" }}>Candidate</span>
             </div>
             {listening && (
               <div style={{
                 position: "absolute", top: 10, left: 10,
                 display: "flex", alignItems: "center", gap: 6,
-                padding: "4px 12px", borderRadius: 100,
+                padding: "4px 10px", borderRadius: 100,
                 background: "rgba(220,38,38,0.85)",
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", animation: "pulse 1s infinite" }} />
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: 2 }}>REC</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: 2 }}>REC</span>
               </div>
             )}
-            <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 8 }}>
+            <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 6 }}>
               {[
                 { on: camOn, onI: Video, offI: VideoOff, toggle: () => setCamOn(c => !c) },
                 { on: micOn, onI: Mic, offI: MicOff, toggle: () => setMicOn(m => !m) },
               ].map(({ on, onI: OnI, offI: OffI, toggle }, i) => (
                 <button key={i} onClick={toggle} disabled={!streamReady} style={{
-                  width: 34, height: 34, borderRadius: "50%",
+                  width: 32, height: 32, borderRadius: "50%",
                   background: on ? "rgba(45,90,39,0.85)" : "rgba(220,38,38,0.8)",
                   border: "none", cursor: streamReady ? "pointer" : "not-allowed",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  {on ? <OnI size={14} color="#fff" /> : <OffI size={14} color="#fff" />}
+                  {on ? <OnI size={13} color="#fff" /> : <OffI size={13} color="#fff" />}
                 </button>
               ))}
             </div>
@@ -1250,27 +1454,18 @@ RULES:
         </div>
 
         {/* Bottom bar */}
-        <div style={{
-          background: "#fff",
-          borderTop: `1.5px solid ${C.border}`,
-          boxShadow: "0 -2px 8px rgba(0,0,0,0.04)",
-          height: 56, display: "flex", alignItems: "center", gap: 10,
-          padding: "0 12px", flexShrink: 0,
-        }}>
-          <div style={{
-            flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-            borderRadius: 10, overflow: "hidden", height: 38, background: "#fff",
+        <div className="iv-live-bottombar">
+          <div className="iv-answer-input-wrap" style={{
             border: `1.5px solid ${listening ? C.accent : C.border}`,
-            transition: "border-color 0.2s",
           }}>
             <input
               type="text"
               style={{
-                flex: 1, height: "100%", padding: "0 14px",
+                flex: 1, height: "100%", padding: "0 12px",
                 fontSize: 13, outline: "none", border: "none", background: "transparent",
                 color: C.text, fontFamily: "'DM Sans', sans-serif",
               }}
-              placeholder={listening ? "Listening — speak now…" : "Type your answer or use the mic…"}
+              placeholder={listening ? "Listening — speak now…" : "Type your answer…"}
               value={answer}
               onChange={e => setAnswer(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAnswer(); } }}
@@ -1278,15 +1473,16 @@ RULES:
           </div>
 
           <button onClick={toggleSpeech} disabled={!streamReady || !micOn} style={{
-            height: 38, borderRadius: 10, padding: "0 12px",
-            display: "flex", alignItems: "center", gap: 6,
+            height: 36, borderRadius: 8, padding: "0 10px",
+            display: "flex", alignItems: "center", gap: 5,
             background: listening ? "rgba(220,38,38,0.08)" : C.accentLight,
             border: `1.5px solid ${listening ? "#EF4444" : C.accentBorder}`,
             color: listening ? "#DC2626" : C.accent,
             cursor: (!streamReady || !micOn) ? "not-allowed" : "pointer",
-            fontSize: 12, fontWeight: 600, letterSpacing: 1, whiteSpace: "nowrap",
+            fontSize: 12, fontWeight: 600, letterSpacing: 0.5, whiteSpace: "nowrap",
             opacity: (!streamReady || !micOn) ? 0.4 : 1,
             fontFamily: "'DM Sans', sans-serif",
+            flexShrink: 0,
           }}>
             {listening
               ? <><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#EF4444", animation: "pulse 1s infinite" }} /> Stop</>
@@ -1294,26 +1490,27 @@ RULES:
           </button>
 
           <button onClick={submitAnswer} disabled={aiLoading || !answer.trim()} style={{
-            height: 38, borderRadius: 10, padding: "0 16px",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            height: 36, borderRadius: 8, padding: "0 14px",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
             background: (aiLoading || !answer.trim()) ? C.border : C.accent,
             color: (aiLoading || !answer.trim()) ? C.textLight : "#fff",
             border: "none",
             cursor: (aiLoading || !answer.trim()) ? "not-allowed" : "pointer",
-            fontSize: 12, fontWeight: 600, letterSpacing: 1, whiteSpace: "nowrap",
+            fontSize: 12, fontWeight: 600, letterSpacing: 0.5, whiteSpace: "nowrap",
             fontFamily: "'DM Sans', sans-serif",
+            flexShrink: 0,
           }}>
             {aiLoading
-              ? <Loader2 size={15} style={{ animation: "spin 0.8s linear infinite" }} />
+              ? <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite" }} />
               : currentQ === plan!.questions.length - 1 ? "✓ Finish" : "Next →"}
           </button>
 
           <button onClick={endInterview} style={{
-            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            width: 36, height: 36, borderRadius: 8, flexShrink: 0,
             background: "rgba(220,38,38,0.08)", border: "1.5px solid rgba(220,38,38,0.25)",
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <PhoneOff size={15} style={{ color: "#DC2626" }} />
+            <PhoneOff size={14} style={{ color: "#DC2626" }} />
           </button>
         </div>
       </div>
@@ -1325,12 +1522,13 @@ RULES:
   // ────────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{globalStyles}</style>
       <div style={{
-        textAlign: "center", padding: "48px 56px",
+        textAlign: "center", padding: "48px 40px",
         background: C.surface, borderRadius: 20,
         border: `2px solid ${C.border}`,
         boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+        margin: "0 16px",
       }}>
         <Loader2 size={40} style={{ color: C.accent, animation: "spin 1.2s linear infinite", margin: "0 auto 16px" }} />
         <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 600, color: C.text, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>

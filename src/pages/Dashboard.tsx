@@ -58,8 +58,9 @@ function PlanBadge({ plan }: { plan: PlanType }) {
   const config = {
     free:    { color: "rgba(148,163,184,0.2)", textColor: "#94a3b8", label: "Free" },
     starter: { color: "rgba(59,130,246,0.2)",  textColor: "#3b82f6", label: "Starter" },
-    pro:     { color: "rgba(168,85,247,0.2)",  textColor: "#a855f7", label: "Pro ⭐" },
-    premium: { color: "rgba(245,158,11,0.2)",  textColor: "#f59e0b", label: "Premium 👑" },
+    pro:     { color: "rgba(168,85,247,0.2)",  textColor: "#a855f7", label: "Pro " },
+    premium: { color: "rgba(245,158,11,0.2)",  textColor: "#f59e0b", label: "Premium " },
+
   };
   const c = config[plan];
   return (
@@ -301,7 +302,7 @@ export default function Dashboard() {
               borderRadius: 12, marginBottom: 24, border: "1px solid rgba(255,255,255,0.05)",
             }}>
               <p style={{ color: GOLD2, fontSize: 12, fontWeight: 600, marginBottom: 16 }}>
-                🔓 UNLOCK WITH PRO:
+                UNLOCK WITH PRO:
               </p>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, textAlign: "left" }}>
                 {["Score Overview Charts", "Weekly Activity Heatmap", "Score Distribution", "Performance Trends", "Unlimited History", "PDF Report Export"].map((feature, i) => (
