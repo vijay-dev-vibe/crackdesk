@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { checkRateLimit } from './_rateLimit';
+import { checkRateLimit } from './_rateLimit.js';
 
 export const config = {
   maxDuration: 60,
