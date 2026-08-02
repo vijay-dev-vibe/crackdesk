@@ -12,7 +12,7 @@ const redis = new Redis({
 // tight enough to stop loops/abuse.
 const ratelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(2, "60 s"),
+  limiter: Ratelimit.slidingWindow(10, "60 s"),
   analytics: true,
   prefix: "mapreducer-ai",
 });
