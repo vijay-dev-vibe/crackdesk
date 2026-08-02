@@ -1,4 +1,5 @@
 // src/lib/gemini.ts
+import { supabase } from "@/integrations/supabase/client";
 export type GeneratedQuestion = {
   question: string;
   options: string[];
@@ -262,11 +263,19 @@ export async function generateQuestionsFromJD(
   // FIX: pass 25 so after filtering we always have 20
   const prompt = buildSmartPrompt(input, 25);
 
-  const response = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
+  const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      throw new Error("Not logged in");
+    }
+
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ prompt }),
+    });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: "Unknown API error" }));

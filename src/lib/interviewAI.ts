@@ -1,4 +1,5 @@
 // src/lib/interviewAI.ts
+import { supabase } from "@/integrations/supabase/client";
 
 interface CallInterviewAIParams {
   action: string;
@@ -13,10 +14,16 @@ export async function callInterviewAI({
   maxTokens,
 }: CallInterviewAIParams): Promise<string> {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      throw new Error("Not logged in");
+    }
+
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile", // or any OpenRouter model

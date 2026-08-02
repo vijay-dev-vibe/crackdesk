@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { checkRateLimit } from './_rateLimit';
 
 export const config = { maxDuration: 60 };
 
@@ -50,7 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (authError || !user) {
     return res.status(401).json({ error: 'Unauthorized' });
+    
   }
+  const allowed = await checkRateLimit(user.id, res);
+  if (!allowed) return; // checkRateLimit already sent the 429 response
 
   // ── Basic request size guard ────────────────────────────────────────────
   const bodySize = JSON.stringify(req.body || {}).length;

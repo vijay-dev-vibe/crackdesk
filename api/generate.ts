@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
+import { checkRateLimit } from './_rateLimit';
 
 export const config = {
   maxDuration: 60,
@@ -6,6 +8,15 @@ export const config = {
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+// Only these origins are allowed to call this endpoint
+const ALLOWED_ORIGINS = [
+  'https://mapreducer.in',
+  'https://www.mapreducer.in',
+  'http://localhost:5173', // local dev
+];
 
 /* -------------------- GROQ -------------------- */
 async function callGroq(prompt: string): Promise<string> {
@@ -57,7 +68,7 @@ async function callGemini(prompt: string): Promise<string> {
   console.log("➡️ Calling Gemini...");
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -260,14 +271,38 @@ export default async function handler(
   console.log("\n=== GENERATE API ===");
   console.log("Timestamp:", new Date().toISOString());
 
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin || '';
+  const ALLOWED = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  // ── Require a logged-in user ────────────────────────────────────────────
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('[api/generate] Missing SUPABASE_URL / SUPABASE_ANON_KEY env vars');
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+
+  const token = authHeader.slice('Bearer '.length);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+  if (authError || !user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+    const allowed = await checkRateLimit(user.id, res);
+   if (!allowed) return;
 
   try {
     const { prompt } = req.body;
@@ -276,7 +311,7 @@ export default async function handler(
       return res.status(400).json({ error: "Prompt required" });
     }
 
-    console.log("Prompt chars:", prompt.length);
+    console.log("User:", user.id, "Prompt chars:", prompt.length);
 
     const effectivePrompt = prompt.length > 6000 ? prompt.slice(0, 6000) : prompt;
     
