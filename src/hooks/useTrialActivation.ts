@@ -10,113 +10,69 @@ export function isTrialCode(code: string) {
   return code.trim().toUpperCase() === TRIAL_CODE;
 }
 
-// ── Plain async functions (no hooks) — safe to call anywhere ─────────────────
+async function callEdgeFunction(action: string, extra: Record<string, unknown> = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) throw new Error("Not authenticated");
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-interview`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, ...extra }),
+    }
+  );
+
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Request failed");
+  return result;
+}
+
+/**
+ * Redeems any referral code (NEWCODE trial or a permanent code) via the
+ * server. Replaces direct client writes to user_subscriptions, which are
+ * now blocked at the database level.
+ */
+export async function redeemReferralCode(code: string): Promise<{ expires_at?: string }> {
+  return callEdgeFunction("redeem-referral-code", { code });
+}
 
 /**
  * Checks if the user has an expired NEWCODE trial and reverts them to free.
- * Plain function — safe to call inside useCallback without hook nesting.
+ * Now goes through the server (service role) since plan_type writes are
+ * blocked for regular client calls.
  * Returns true if a revert happened.
  */
-export async function checkAndRevertExpiredTrial(uid: string): Promise<boolean> {
-  const now = new Date().toISOString();
-
-  const { data: expiredTrial } = await supabase
-    .from("trial_activations")
-    .select("id, plan_type")
-    .eq("user_id", uid)
-    .eq("code", TRIAL_CODE)
-    .eq("reverted", false)
-    .lt("expires_at", now)
-    .maybeSingle();
-
-  if (!expiredTrial) return false;
-
-  const { error: revertError } = await supabase
-    .from("user_subscriptions")
-    .upsert(
-      {
-        user_id: uid,
-        plan_type: "free",
-        tests_used_this_month: 0,
-        month_start_date: new Date(
-          new Date().getFullYear(),
-          new Date().getMonth(),
-          1
-        ).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
-
-  if (revertError) {
-    console.error("Failed to revert trial:", revertError);
+export async function checkAndRevertExpiredTrial(_uid: string): Promise<boolean> {
+  try {
+    const result = await callEdgeFunction("revert-expired-trial");
+    return !!result.reverted;
+  } catch (err) {
+    console.error("Failed to check/revert trial:", err);
     return false;
   }
-
-  await supabase
-    .from("trial_activations")
-    .update({ reverted: true })
-    .eq("id", expiredTrial.id);
-
-  return true;
 }
 
 // ── Hook — only for Checkout.tsx ─────────────────────────────────────────────
 
 export function useTrialActivation() {
   /**
-   * Activates a 2-hour trial for the given plan.
-   * Inserts/upserts a row in trial_activations and upgrades user's plan.
+   * Activates a 2-hour trial for NEWCODE. Kept for API compatibility with
+   * existing Checkout.tsx callers — internally now calls the server action.
    */
-  const activateTrial = useCallback(async (planType: PlanType): Promise<Date> => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error("Not authenticated");
-
-    const uid = session.user.id;
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + TRIAL_DURATION_MS);
-
-    // Upsert: re-applying NEWCODE resets the 2hr window fresh
-    const { error: insertError } = await supabase
-      .from("trial_activations")
-      .upsert(
-        {
-          user_id: uid,
-          plan_type: planType,
-          code: TRIAL_CODE,
-          activated_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          reverted: false,
-        },
-        { onConflict: "user_id,code" }
-      );
-
-    if (insertError) throw insertError;
-
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const { error: planError } = await supabase
-      .from("user_subscriptions")
-      .upsert(
-        {
-          user_id: uid,
-          plan_type: planType,
-          tests_used_this_month: 0,
-          month_start_date: monthStart.toISOString(),
-          updated_at: now.toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
-
-    if (planError) throw planError;
-
-    return expiresAt;
+  const activateTrial = useCallback(async (_planType: PlanType): Promise<Date> => {
+    const result = await redeemReferralCode(TRIAL_CODE);
+    if (!result.expires_at) throw new Error("No expiry returned from server");
+    return new Date(result.expires_at);
   }, []);
 
   /**
    * Get active trial info for the current user (for countdown timer).
-   * Returns null if no active trial.
+   * Still a plain read — RLS allows a user to read their own row, so this
+   * stays as a direct client query.
    */
   const getActiveTrial = useCallback(async (): Promise<{
     expiresAt: Date;

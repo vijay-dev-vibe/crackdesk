@@ -663,7 +663,7 @@ export default function AdminDashboard() {
             <RefreshCw style={{ width: 13, height: 13, ...(loading ? { animation: "spin 1s linear infinite" } : {}) }} />
             {loading ? "Syncing…" : "Refresh"}
           </button>
-          <button onClick={() => { sessionStorage.removeItem("admin_auth"); navigate("/login"); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "#f8514908", border: "1px solid #f8514944", color: "#f85149", fontSize: 12, cursor: "pointer" }}>
+          <button onClick={async () => { await supabase.auth.signOut(); navigate("/login"); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: "#f8514908", border: "1px solid #f8514944", color: "#f85149", fontSize: 12, cursor: "pointer" }}>
             <LogOut style={{ width: 13, height: 13 }} /> Logout
           </button>
         </div>

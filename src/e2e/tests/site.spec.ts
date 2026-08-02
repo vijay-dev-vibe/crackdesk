@@ -79,7 +79,7 @@ test.describe('🔄 Refresh Stays on Same Page', () => {
 // ============================================================
 // 3. 🔒 PROTECTED ROUTES — redirect to /login when not logged in
 // ============================================================
-test.describe('🔒 Protected Route Redirect', () => {
+test.describe('Protected Route Soft-Gate', () => {
   for (const route of PROTECTED_ROUTES) {
     test(`[${route.name}] redirects unauthenticated users to /login`, async ({ page }) => {
       await page.goto(route.path);

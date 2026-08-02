@@ -16,15 +16,55 @@ serve(async (req) => {
     const body = await req.json();
 
     // ── Reset Password action ─────────────────────────────────────────
+    // SECURITY: identity (email + college + dob) is re-verified HERE,
+    // server-side, using the service role — never trust a bare user_id
+    // or a "verified" flag coming from the client.
     if (body.action === "reset-password") {
-      const { user_id, new_password } = body;
+      const { email, college_name, dob, new_password } = body;
+
+      if (!email || !college_name || !dob || !new_password) {
+        return new Response(JSON.stringify({ error: "Missing required fields" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (new_password.length < 6) {
+        return new Response(JSON.stringify({ error: "Password must be at least 6 characters." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
       );
 
-      const { error } = await supabase.auth.admin.updateUserById(user_id, {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, college_name, date_of_birth")
+        .eq("email", email.toLowerCase().trim())
+        .maybeSingle();
+
+      // Generic error message on purpose — don't reveal whether the
+      // email exists or which specific field was wrong.
+      const genericError = () =>
+        new Response(JSON.stringify({ error: "Verification failed. Check your details." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      if (!profile) return genericError();
+
+      const dobMatch = profile.date_of_birth === dob;
+      const collegeMatch =
+        profile.college_name?.toLowerCase().trim() === college_name.toLowerCase().trim();
+
+      if (!dobMatch || !collegeMatch) return genericError();
+
+      // Only now — after server-side verification — update the password
+      const { error } = await supabase.auth.admin.updateUserById(profile.id, {
         password: new_password,
       });
 
@@ -36,6 +76,236 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Redeem Reward Code action ───────────────────────────────────────
+    // Awarded automatically (DB trigger) when a user scores >=80% on a
+    // mock test. This action is the ONLY way plan_type can become "pro"
+    // via this path — it always runs server-side with the service role.
+// ── Redeem Referral Code action ─────────────────────────────────────
+    // Handles both NEWCODE (2-hour trial) and permanent referral codes.
+    // Replaces client-side plan_type writes, which are now DB-blocked.
+    if (body.action === "redeem-referral-code") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      if (userError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { code } = body;
+      if (!code) {
+        return new Response(JSON.stringify({ error: "Missing code" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      const normalizedCode = code.trim().toUpperCase();
+
+      const { data: refCode } = await admin
+        .from("referral_codes")
+        .select("code, grants_plan, first_used_at, is_active")
+        .eq("code", normalizedCode)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!refCode) {
+        return new Response(JSON.stringify({ error: "Invalid or inactive referral code." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const now = new Date();
+      const isNewCode = normalizedCode === "NEWCODE";
+
+      // 2-hour expiry window check (same rule for all codes, matches existing logic)
+      if (refCode.first_used_at && !isNewCode) {
+        const firstUsed = new Date(refCode.first_used_at);
+        const expiresWindow = new Date(firstUsed.getTime() + 2 * 60 * 60 * 1000);
+        if (now > expiresWindow) {
+          return new Response(JSON.stringify({ error: "This code has expired." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const planType = refCode.grants_plan;
+
+      if (isNewCode) {
+        // 2-hour trial — re-applying resets the window fresh
+        const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+        const { error: trialError } = await admin
+          .from("trial_activations")
+          .upsert(
+            {
+              user_id: user.id,
+              plan_type: planType,
+              code: "NEWCODE",
+              activated_at: now.toISOString(),
+              expires_at: expiresAt.toISOString(),
+              reverted: false,
+            },
+            { onConflict: "user_id,code" }
+          );
+        if (trialError) {
+          return new Response(JSON.stringify({ error: trialError.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const { error: planError } = await admin
+          .from("user_subscriptions")
+          .upsert(
+            {
+              user_id: user.id,
+              plan_type: planType,
+              tests_used_this_month: 0,
+              month_start_date: now.toISOString(),
+              updated_at: now.toISOString(),
+            },
+            { onConflict: "user_id" }
+          );
+        if (planError) {
+          return new Response(JSON.stringify({ error: planError.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, expires_at: expiresAt.toISOString() }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Regular permanent referral code
+      const { error: planError } = await admin
+        .from("user_subscriptions")
+        .upsert(
+          {
+            user_id: user.id,
+            plan_type: planType,
+            tests_used_this_month: 0,
+            month_start_date: now.toISOString(),
+            updated_at: now.toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+      if (planError) {
+        return new Response(JSON.stringify({ error: planError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!refCode.first_used_at) {
+        await admin
+          .from("referral_codes")
+          .update({ first_used_at: now.toISOString() })
+          .eq("code", normalizedCode);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Revert Expired Trial action ──────────────────────────────────────
+    // Called on page load to auto-downgrade a user whose 2-hour trial ended.
+    if (body.action === "revert-expired-trial") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: { user }, error: userError } = await userClient.auth.getUser();
+      if (userError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+
+      const now = new Date().toISOString();
+
+      const { data: expiredTrial } = await admin
+        .from("trial_activations")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("code", "NEWCODE")
+        .eq("reverted", false)
+        .lt("expires_at", now)
+        .maybeSingle();
+
+      if (!expiredTrial) {
+        return new Response(JSON.stringify({ reverted: false }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await admin
+        .from("user_subscriptions")
+        .upsert(
+          {
+            user_id: user.id,
+            plan_type: "free",
+            tests_used_this_month: 0,
+            month_start_date: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+
+      await admin
+        .from("trial_activations")
+        .update({ reverted: true })
+        .eq("id", expiredTrial.id);
+
+      return new Response(JSON.stringify({ reverted: true }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

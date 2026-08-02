@@ -30,15 +30,29 @@ export function useSubscription() {
     // ── Check & revert expired NEWCODE trial first ──
     const reverted = await checkAndRevertExpiredTrial(uid);
 
-    const { data: sub } = await supabase
-      .from("user_subscriptions")
-      .select("plan_type")
-      .eq("user_id", uid)
-      .maybeSingle();
+      const { data: sub } = await supabase
+        .from("user_subscriptions")
+        .select("plan_type, month_start_date")
+        .eq("user_id", uid)
+        .maybeSingle();
 
-    const plan = reverted
-      ? "free"
-      : ((sub?.plan_type ?? "free") as PlanType);
+// Auto-drop to free if 30-day period expired
+        const now = new Date();
+        const upgradeDate = sub?.month_start_date ? new Date(sub.month_start_date) : null;
+        const isExpired = upgradeDate 
+          ? (now.getTime() - upgradeDate.getTime()) > 30 * 24 * 60 * 60 * 1000 
+          : false;
+
+        if (isExpired && sub?.plan_type !== "free") {
+          await supabase
+            .from("user_subscriptions")
+            .update({ plan_type: "free" })
+            .eq("user_id", uid);
+        }
+
+        const plan = reverted || isExpired
+          ? "free"
+          : ((sub?.plan_type ?? "free") as PlanType);
 
     const limits = PLAN_LIMITS[plan];
 
@@ -55,11 +69,11 @@ export function useSubscription() {
         .eq("user_id", uid);
       mockUsed = mc ?? 0;
       aiUsed = ac ?? 0;
-    } else {
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
-      const iso = monthStart.toISOString();
+      } else {
+        const monthStart = sub?.month_start_date
+          ? new Date(sub.month_start_date)
+          : new Date();
+        const iso = monthStart.toISOString();
 
       const { count: mc } = await supabase
         .from("test_results")
@@ -134,19 +148,18 @@ export function useSubscription() {
       } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Not authenticated");
 
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const now = new Date();
 
-      const { error } = await supabase
-        .from("user_subscriptions")
-        .upsert(
-          {
-            user_id: session.user.id,
-            plan_type: newPlan,
-            tests_used_this_month: 0,
-            month_start_date: monthStart.toISOString(),
-            updated_at: now.toISOString(),
-          },
+          const { error } = await supabase
+            .from("user_subscriptions")
+            .upsert(
+              {
+                user_id: session.user.id,
+                plan_type: newPlan,
+                tests_used_this_month: 0,
+                month_start_date: now.toISOString(), // upgrade date, resets every 30 days
+                updated_at: now.toISOString(),
+              },
           { onConflict: "user_id" }
         );
 

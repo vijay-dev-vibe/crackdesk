@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { motion } from "framer-motion";
 import { callInterviewAI, parseAIJson } from "@/lib/interviewAI";
+import { supabase } from "@/integrations/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QuestionScore { id: number; score: number; feedback: string; keyword_hits?: string[] }
@@ -192,15 +193,35 @@ export default function InterviewAnalysis() {
       try {
         const parsed = parseAIJson ? parseAIJson(existingAnalysis) : JSON.parse(existingAnalysis);
         if (parsed) {
-          setResult(normalize(parsed));
-          setLoading(false);
-          sessionStorage.removeItem("iv_plan");
-          sessionStorage.removeItem("iv_answers");
-          sessionStorage.removeItem("iv_violations");
-          sessionStorage.removeItem("iv_duration");
-          sessionStorage.removeItem("iv_analysis");
-          return;
-        }
+            const normalized = normalize(parsed);
+            setResult(normalized);
+            setLoading(false);
+
+            // ── Save analysis results to interview_results ──
+            const saveAnalysis = async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                await supabase
+                  .from("interview_results")
+                  .insert({
+                    user_id: session.user.id,
+                    overall_score: normalized.overall_score,
+                    overall_grade: normalized.overall_grade,
+                    hire_recommendation: normalized.hire_recommendation,
+                    role: plan.role ?? null,
+                    duration_seconds: dur,
+                    violations: viols.length,
+                  });
+              }
+
+              sessionStorage.removeItem("iv_plan");
+              sessionStorage.removeItem("iv_answers");
+              sessionStorage.removeItem("iv_violations");
+              sessionStorage.removeItem("iv_duration");
+              sessionStorage.removeItem("iv_analysis");
+            };
+            saveAnalysis();
+          }
       } catch (e) { console.error("Existing analysis parse failed, re-running:", e); }
     }
 

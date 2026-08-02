@@ -205,7 +205,7 @@ export default function Pricing() {
                     })}
                   </ul>
 
-                  <Link to={plan.name === "Free" ? "/signup" : `/checkout?plan=${plan.name.toLowerCase()}`}>
+                  <Link to={plan.name === "Free" ? "/Landing" : `/checkout?plan=${plan.name.toLowerCase()}`}>
                     <Button variant={plan.variant} className="w-full" size="sm">
                       {plan.cta}
                     </Button>

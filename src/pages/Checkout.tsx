@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useReferralCode } from "@/hooks/useReferralCode";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useTrialActivation, isTrialCode } from "@/hooks/useTrialActivation";
+import { useTrialActivation, isTrialCode, redeemReferralCode } from "@/hooks/useTrialActivation";
 import { PLAN_LIMITS, type PlanType } from "@/lib/plans";
 import {
   Check,
@@ -162,8 +162,7 @@ export default function Checkout() {
         } else {
           // ── Other codes: permanent access flow ──
           const targetPlan = result!.grants_plan as PlanType;
-          await updatePlan(targetPlan);
-          await markUsed(result!.code);
+          await redeemReferralCode(result!.code);
           toast({
             title: "🎉 Plan Activated!",
             description: `You now have full ${PLAN_DISPLAY_NAMES[targetPlan]} access — no payment needed.`,

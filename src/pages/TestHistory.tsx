@@ -4,7 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Mic, AlertTriangle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSubscription } from "@/hooks/useSubscription";
 
@@ -35,6 +35,18 @@ interface TestResult {
   created_at: string;
 }
 
+interface InterviewResult {
+  id: string;
+  user_id: string;
+  created_at: string;
+  overall_score: number | null;
+  overall_grade: string | null;
+  hire_recommendation: string | null;
+  role: string | null;
+  duration_seconds: number | null;
+  violations: number | null;
+}
+
 type Filter = "all" | "high" | "mid" | "low";
 
 function getPct(r: TestResult) {
@@ -58,6 +70,18 @@ function getBgClass(pct: number) {
     : "bg-red-50 text-red-700";
 }
 
+function getInterviewColor(score: number) {
+  return score >= 75 ? "#16a34a" : score >= 50 ? "#d97706" : "#dc2626";
+}
+
+function getHireBadgeClass(rec: string | null) {
+  if (!rec) return "bg-gray-50 text-gray-600";
+  if (rec === "Strong Hire") return "bg-green-50 text-green-700";
+  if (rec === "Hire") return "bg-emerald-50 text-emerald-700";
+  if (rec === "Maybe") return "bg-amber-50 text-amber-700";
+  return "bg-red-50 text-red-700";
+}
+
 function ScoreRing({ pct }: { pct: number }) {
   const r = 18, cx = 22, cy = 22, circ = 2 * Math.PI * r;
   const dash = circ * (pct / 100);
@@ -74,6 +98,26 @@ function ScoreRing({ pct }: { pct: number }) {
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-medium"
         style={{ color }}>{pct}%</span>
+    </div>
+  );
+}
+
+function InterviewScoreRing({ score }: { score: number }) {
+  const r = 18, cx = 22, cy = 22, circ = 2 * Math.PI * r;
+  const dash = circ * (score / 100);
+  const color = getInterviewColor(score);
+  return (
+    <div className="relative w-11 h-11 shrink-0">
+      <svg width="44" height="44" viewBox="0 0 44 44"
+        style={{ transform: "rotate(-90deg)", position: "absolute" }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e5e7eb" strokeWidth="3" />
+        <circle cx={cx} cy={cy} r={r} fill="none"
+          stroke={color} strokeWidth="3"
+          strokeDasharray={`${dash.toFixed(1)} ${(circ - dash).toFixed(1)}`}
+          strokeLinecap="round" />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-medium"
+        style={{ color }}>{score}%</span>
     </div>
   );
 }
@@ -129,6 +173,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export default function TestHistory() {
   const [results, setResults] = useState<TestResult[]>([]);
+  const [interviewResults, setInterviewResults] = useState<InterviewResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -136,8 +181,6 @@ export default function TestHistory() {
   const { planLimits, subscription, loading: subLoading } = useSubscription();
 
   useEffect(() => {
-    // Don't run until subscription has resolved — avoids retention being
-    // applied with wrong/null planLimits on first render
     if (subLoading) return;
 
     let mounted = true;
@@ -151,35 +194,39 @@ export default function TestHistory() {
           return;
         }
 
-        // ── Determine retention cutoff ──────────────────────────────────
-        // Treat missing, null, undefined, or Infinity as "no limit" (paid plan).
-        // Only apply a cutoff when retentionDays is a real finite number.
+        // ── Retention cutoff ────────────────────────────────────────────
         const retentionDays = planLimits?.historyRetentionDays;
         const hasLimit =
           retentionDays !== undefined &&
           retentionDays !== null &&
           Number.isFinite(retentionDays);
 
-        // If there IS a finite retention window, push the date filter to
-        // Supabase directly so we never fetch rows the user can't see anyway.
         const cutoffIso = hasLimit
           ? new Date(Date.now() - (retentionDays as number) * 24 * 60 * 60 * 1000).toISOString()
           : null;
 
+        // ── Mock test results ───────────────────────────────────────────
         let query = supabase
           .from("test_results")
           .select("*")
           .eq("user_id", session.user.id)
           .order("created_at", { ascending: false });
 
-        if (cutoffIso) {
-          query = query.gte("created_at", cutoffIso);
-        }
+        if (cutoffIso) query = query.gte("created_at", cutoffIso);
 
         const { data, error: dbErr } = await query;
         if (dbErr) throw new Error(dbErr.message);
-
         if (mounted) setResults(data ?? []);
+
+        // ── Interview results ───────────────────────────────────────────
+        const { data: ivData } = await supabase
+          .from("interview_results")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false });
+
+        if (mounted) setInterviewResults(ivData ?? []);
+
       } catch (e: any) {
         console.error("[TestHistory] Load error:", e.message);
         if (mounted) setError(e.message ?? "Failed to load results.");
@@ -190,7 +237,7 @@ export default function TestHistory() {
 
     loadResults();
     return () => { mounted = false; };
-  }, [planLimits, subLoading]); // re-runs if subscription changes
+  }, [planLimits, subLoading]);
 
   const filtered = results.filter((r) => {
     const pct = getPct(r);
@@ -209,10 +256,15 @@ export default function TestHistory() {
     ? Math.max(...validResults.map(getPct))
     : 0;
 
-  // ── Show upgrade banner only when:
-  //    1. planLimits has loaded (not null)
-  //    2. retention is a real finite number (free/limited plan)
-  //    3. subscription is NOT a paid/unlimited plan
+  // Interview stats
+  const validIvResults = interviewResults.filter(iv => iv.overall_score != null);
+  const avgIvScore = validIvResults.length > 0
+    ? Math.round(validIvResults.reduce((a, iv) => a + (iv.overall_score ?? 0), 0) / validIvResults.length)
+    : 0;
+  const bestIvScore = validIvResults.length > 0
+    ? Math.max(...validIvResults.map(iv => iv.overall_score ?? 0))
+    : 0;
+
   const retentionDays = planLimits?.historyRetentionDays;
   const showUpgradeBanner =
     !subLoading &&
@@ -226,6 +278,7 @@ export default function TestHistory() {
       <Navbar />
       <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
 
+        {/* ── Mock Tests Header ── */}
         <div className="mb-6">
           <h1 className="font-display text-2xl font-bold tracking-tight">Test History</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -244,6 +297,7 @@ export default function TestHistory() {
           </div>
         )}
 
+        {/* ── Mock Test Stats ── */}
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
             { label: "Total tests", value: totalTests.toString(), color: "" },
@@ -264,19 +318,18 @@ export default function TestHistory() {
 
         {!loading && totalTests > 0 && <MiniBarChart results={results} />}
 
-        {/* ── Upgrade banner — only shown on free/limited plans ── */}
+        {/* ── Upgrade banner ── */}
         {showUpgradeBanner && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700 flex items-center justify-between">
             <span>
               Showing last {retentionDays} days of history.{" "}
-              <Link to="/pricing" className="font-semibold underline">
-                Upgrade to Pro
-              </Link>{" "}
+              <Link to="/pricing" className="font-semibold underline">Upgrade to Pro</Link>{" "}
               for unlimited history.
             </span>
           </div>
         )}
 
+        {/* ── Filter buttons ── */}
         {!loading && totalTests > 0 && (
           <div className="flex gap-2 flex-wrap mb-4">
             {FILTERS.map((f) => (
@@ -295,6 +348,7 @@ export default function TestHistory() {
           </div>
         )}
 
+        {/* ── Mock Test List ── */}
         {loading || subLoading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
@@ -304,9 +358,7 @@ export default function TestHistory() {
             <div className="bg-white border border-border rounded-xl p-12 text-center">
               <BookOpen className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
               <h3 className="font-semibold text-base">No tests taken yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Take your first mock test to see your progress here.
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">Take your first mock test to see your progress here.</p>
               <Link to="/mock-test">
                 <Button className="mt-5 gap-2" variant="default">
                   <BookOpen className="h-4 w-4" /> Take Your First Test
@@ -319,10 +371,7 @@ export default function TestHistory() {
             {filtered.map((r, i) => {
               const pct = getPct(r);
               return (
-                <motion.div key={r.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}>
+                <motion.div key={r.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
                   <div className="bg-white border border-border rounded-xl px-4 py-3.5 flex items-center gap-3 hover:border-muted-foreground/30 transition-colors">
                     <ScoreRing pct={pct} />
                     <div className="flex-1 min-w-0">
@@ -331,9 +380,7 @@ export default function TestHistory() {
                       </p>
                       <div className="flex gap-3 mt-1 flex-wrap">
                         <span className="text-[11px] text-muted-foreground">
-                          {new Date(r.created_at).toLocaleDateString("en-IN", {
-                            day: "numeric", month: "short", year: "numeric",
-                          })}
+                          {new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                         </span>
                         <span className="text-[11px] text-muted-foreground">{formatTime(r.time_taken)}</span>
                         <span className="text-[11px] text-muted-foreground">{r.total_questions} Qs</span>
@@ -347,12 +394,119 @@ export default function TestHistory() {
               );
             })}
             {filtered.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                No tests match this filter.
-              </p>
+              <p className="text-center text-sm text-muted-foreground py-8">No tests match this filter.</p>
             )}
           </div>
         )}
+
+        {/* ── Divider ── */}
+        <div className="my-10 flex items-center gap-4">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground uppercase tracking-widest">AI Interviews</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        {/* ── AI Interviews Section ── */}
+        <div>
+          <div className="mb-4">
+            <h2 className="font-display text-xl font-bold tracking-tight">AI Interview History</h2>
+            <p className="text-sm text-muted-foreground mt-1">Your past AI mock interview sessions</p>
+          </div>
+
+          {/* Interview Stats */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {[
+              { label: "Total interviews", value: interviewResults.length.toString(), color: "" },
+              {
+                label: "Avg score",
+                value: validIvResults.length > 0 ? `${avgIvScore}%` : "—",
+                color: avgIvScore >= 70 ? "text-green-600" : avgIvScore >= 50 ? "text-amber-600" : "text-red-600",
+              },
+              {
+                label: "Personal best",
+                value: validIvResults.length > 0 ? `${bestIvScore}%` : "—",
+                color: "text-green-600",
+              },
+            ].map((s, i) => (
+              <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+                <div className="bg-white border border-border rounded-xl p-3.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</p>
+                  <p className={`font-display text-xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Interview List */}
+          {loading || subLoading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => <SkeletonCard key={i} />)}
+            </div>
+          ) : interviewResults.length === 0 ? (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="bg-white border border-border rounded-xl p-12 text-center">
+                <Mic className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                <h3 className="font-semibold text-base">No interviews taken yet</h3>
+                <p className="text-sm text-muted-foreground mt-1">Complete an AI mock interview to see your history here.</p>
+                <Link to="/ai-interview">
+                  <Button className="mt-5 gap-2" variant="default">
+                    <Mic className="h-4 w-4" /> Start AI Interview
+                  </Button>
+                </Link>
+              </div>
+            </motion.div>
+          ) : (
+            <div className="space-y-2.5">
+              {interviewResults.map((iv, i) => {
+                const hasScore = iv.overall_score != null;
+                return (
+                  <motion.div key={iv.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
+                    <div className="bg-white border border-border rounded-xl px-4 py-3.5 flex items-center gap-3 hover:border-muted-foreground/30 transition-colors">
+                      {/* Score ring or mic icon */}
+                      {hasScore ? (
+                        <InterviewScoreRing score={iv.overall_score!} />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                          <Mic size={16} className="text-amber-600" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {iv.role ? `${iv.role} Interview` : "AI Mock Interview"}
+                        </p>
+                        <div className="flex gap-3 mt-1 flex-wrap items-center">
+                          <span className="text-[11px] text-muted-foreground">
+                            {new Date(iv.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                          {iv.duration_seconds != null && (
+                            <span className="text-[11px] text-muted-foreground">{formatTime(iv.duration_seconds)}</span>
+                          )}
+                          {iv.overall_grade && (
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              Grade: <span className="text-foreground font-semibold">{iv.overall_grade}</span>
+                            </span>
+                          )}
+                          {iv.violations != null && iv.violations > 0 && (
+                            <span className="text-[11px] text-red-500 flex items-center gap-0.5">
+                              <AlertTriangle size={10} /> {iv.violations} violation{iv.violations !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Hire recommendation badge */}
+                      <span className={`text-xs font-medium px-2 py-1 rounded-md shrink-0 ${getHireBadgeClass(iv.hire_recommendation)}`}>
+                        {iv.hire_recommendation ?? "Completed"}
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
       </main>
       <Footer />
     </div>

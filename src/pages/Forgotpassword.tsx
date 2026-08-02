@@ -17,10 +17,9 @@ export default function ForgotPassword() {
   const [verified, setVerified] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
-  const [userId, setUserId] = useState("");
   const navigate = useNavigate();
 
-  // Step 1 — Verify identity
+  // Step 1 — Verify identity (client-side pre-check only; server re-verifies too)
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -48,12 +47,11 @@ export default function ForgotPassword() {
       return;
     }
 
-    setUserId(data.id);
     setVerified(true);
     setLoading(false);
   };
 
-  // Step 2 — Set new password via admin API (Supabase Edge Function)
+  // Step 2 — Set new password (server re-verifies identity again before applying)
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -71,14 +69,20 @@ export default function ForgotPassword() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-interview/index.ts`, // Call the same function but it will route based on action
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-interview`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({ action: "reset-password", user_id: userId, new_password: newPassword }),
+          body: JSON.stringify({
+            action: "reset-password",
+            email,
+            college_name: college,
+            dob,
+            new_password: newPassword,
+          }),
         }
       );
 

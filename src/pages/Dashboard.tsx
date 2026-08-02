@@ -1,4 +1,5 @@
 import Navbar from "@/components/Navbar";
+import RewardBanner from "@/components/RewardBanner";
 import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import { BookOpen, TrendingUp, Award, Loader2, Info, Lock, Zap } from "lucide-react";
@@ -7,7 +8,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { canUserAccess } from "@/lib/plans";
-import type { PlanType } from "@/lib/plans";
+
 
 interface TestResult {
   test_title: string;
@@ -278,6 +279,7 @@ export default function Dashboard() {
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6fb" }}>
         <Navbar />
         <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <RewardBanner />
           <div style={{ ...CARD, maxWidth: 600, width: "100%", textAlign: "center", padding: isMobile ? 24 : 48 }}>
             <div style={{
               width: 80, height: 80, borderRadius: "50%",
@@ -351,6 +353,8 @@ export default function Dashboard() {
       </AnimatePresence>
 
       <main style={{ flex: 1, maxWidth: 1200, margin: "0 auto", width: "100%", padding: isMobile ? "24px 16px" : "32px 20px" }}>
+
+        <RewardBanner /> 
 
         {/* ── Header ── */}
         <motion.div

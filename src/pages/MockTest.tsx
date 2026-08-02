@@ -29,15 +29,15 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { generateCertificatePDF } from "@/lib/TestCertificatePDF";
 
-function QuestionText({ text }: { text: string }) {
+function QuestionText({ text, small = false }: { text: string; small?: boolean }) {
   const parts = text.split(/(```[\s\S]*?```)/g);
   return (
-    <div className="mt-3 font-display text-lg font-semibold text-foreground space-y-3">
+    <div className={small ? "text-sm font-medium text-foreground leading-snug space-y-2" : "mt-3 font-display text-lg font-semibold text-foreground space-y-3"}>
       {parts.map((part, i) => {
         if (part.startsWith("```")) {
-          const code = part.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
+          const code = part.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/, "").trim();
           return (
-            <pre key={i} className="rounded-lg bg-muted border border-border p-4 text-sm font-mono text-foreground overflow-x-auto whitespace-pre leading-relaxed">
+            <pre key={i} className="rounded-lg bg-zinc-900 border border-zinc-700 p-4 text-sm font-mono text-green-400 overflow-x-auto whitespace-pre leading-relaxed mt-2">
               {code}
             </pre>
           );
@@ -578,9 +578,7 @@ export default function MockTest() {
                   <span className="text-xs font-semibold text-primary bg-secondary px-2 py-1 rounded">
                     {questions[current].skill}
                   </span>
-                  <h2 className="mt-3 font-display text-lg font-semibold text-foreground">
-                    {questions[current].question}
-                  </h2>
+                  <QuestionText text={questions[current].question} />
                   <div className="mt-6 space-y-3">
                     {questions[current].options.map((opt, oi) => (
                       <button
@@ -894,9 +892,7 @@ export default function MockTest() {
                                   {i + 1}
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-foreground leading-snug">
-                                    {q.question}
-                                  </p>
+                                  <QuestionText text={q.question} small />
                                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-semibold text-primary bg-secondary px-2 py-0.5 rounded">
                                       {q.skill}

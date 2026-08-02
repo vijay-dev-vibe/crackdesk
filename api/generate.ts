@@ -33,8 +33,7 @@ async function callGroq(prompt: string): Promise<string> {
         }
       ],
       temperature: 0.3,
-      max_tokens: 6000, // increased for code questions which are longer
-      // FIX 2: Removed response_format — it forces object wrapping which breaks array parsing
+      max_tokens: 8000, // bumped: code questions are long, need headroom for 25 questions
     }),
   });
 
@@ -70,7 +69,7 @@ async function callGemini(prompt: string): Promise<string> {
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 6000,
+          maxOutputTokens: 8000,
           // FIX 3: Removed responseMimeType — it can also cause wrapping issues
         },
       }),
@@ -90,6 +89,44 @@ async function callGemini(prompt: string): Promise<string> {
   return content;
 }
 
+/* -------------------- SANITIZE CONTROL CHARS -------------------- */
+// Walks the JSON string char-by-char. When inside a JSON string value,
+// replaces raw \n \r \t with their escape sequences so JSON.parse doesn't choke.
+// This correctly handles escaped quotes (\") and doesn't touch structural newlines.
+function sanitizeJsonControlChars(text: string): string {
+  let result = "";
+  let inString = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") {
+        // Escaped character — pass both chars through unchanged
+        result += ch + (text[i + 1] ?? "");
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        result += ch;
+      } else if (ch === "\n") {
+        result += "\\n";   // escape raw newline inside string
+      } else if (ch === "\r") {
+        result += "\\r";
+      } else if (ch === "\t") {
+        result += "\\t";
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === '"') inString = true;
+      result += ch;
+    }
+    i++;
+  }
+  return result;
+}
+
 /* -------------------- IMPROVED JSON PARSER -------------------- */
 function safeParseQuestions(text: string): any[] {
   try {
@@ -99,6 +136,13 @@ function safeParseQuestions(text: string): any[] {
       .replace(/```json\s*/gi, "")
       .replace(/```\s*/g, "")
       .trim();
+
+    // FIX: Escape literal newlines/tabs that appear inside JSON string values.
+    // The AI puts real newline characters inside "question" strings (code snippets),
+    // which makes JSON.parse throw "Bad control character" errors.
+    // We use a state-machine approach: scan char by char, and only escape
+    // control characters when we're inside a JSON string (between unescaped quotes).
+    cleaned = sanitizeJsonControlChars(cleaned);
 
     // FIX 4: If Groq wraps in an object like {"questions":[...]}, unwrap it
     if (cleaned.startsWith("{")) {

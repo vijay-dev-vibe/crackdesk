@@ -79,19 +79,15 @@ test.describe('🔄 Refresh Stays on Same Page', () => {
 // ============================================================
 // 3. 🔒 PROTECTED ROUTES — redirect to /login when not logged in
 // ============================================================
-test.describe('🔒 Protected Route Redirect', () => {
+test.describe('🔒 Protected Route Soft-Gate', () => {
   for (const route of PROTECTED_ROUTES) {
-    test(`[${route.name}] redirects unauthenticated users to /login`, async ({ page }) => {
+    test(`[${route.name}] loads without redirect (soft-gated)`, async ({ page }) => {
       await page.goto(route.path);
       await page.waitForTimeout(1000);
-
       const currentUrl = page.url();
-      const isOnLogin = currentUrl.includes('/login');
-      const isOnLanding = currentUrl.endsWith('/') || currentUrl.includes('/#');
-
       expect(
-        isOnLogin || isOnLanding,
-        `${route.name} did NOT redirect unauthenticated user. Still on: ${currentUrl}`
+        currentUrl.includes(route.path),
+        `${route.name} unexpectedly redirected. Now on: ${currentUrl}`
       ).toBeTruthy();
     });
   }

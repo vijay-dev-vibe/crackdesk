@@ -1,0 +1,12 @@
+config:
+  target: "http://localhost:5173"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 100
+      name: "Load Test"
+
+scenarios:
+  - flow:
+      - get:
+          url: "/mock-test"

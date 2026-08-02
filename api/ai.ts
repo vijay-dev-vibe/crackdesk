@@ -1,9 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 
 export const config = { maxDuration: 60 };
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+// Only these origins are allowed to call this endpoint
+const ALLOWED_ORIGINS = [
+  'https://mapreducer.in',
+  'https://www.mapreducer.in',
+  'http://localhost:5173', // local dev
+];
 
 // Groq only accepts its own model names — map everything to a capable one
 const toGroqModel = (requested: string): string => {
@@ -14,16 +24,42 @@ const toGroqModel = (requested: string): string => {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ── Require a logged-in user ────────────────────────────────────────────
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('[api/ai] Missing SUPABASE_URL / SUPABASE_ANON_KEY env vars');
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+
+  const token = authHeader.slice('Bearer '.length);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+  if (authError || !user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // ── Basic request size guard ────────────────────────────────────────────
+  const bodySize = JSON.stringify(req.body || {}).length;
+  if (bodySize > 50_000) {
+    return res.status(413).json({ error: 'Request too large' });
+  }
+
   const requestedModel: string = req.body?.model || 'meta-llama/llama-3.1-70b-instruct';
-  console.log('[api/ai] requested model:', requestedModel);
-  console.log('[api/ai] OpenRouter key:', !!OPENROUTER_API_KEY);
-  console.log('[api/ai] Groq key:', !!GROQ_API_KEY);
+  console.log('[api/ai] user:', user.id, 'model:', requestedModel);
 
   // ── 1. Try OpenRouter ──────────────────────────────────────────────────────
   if (OPENROUTER_API_KEY) {
